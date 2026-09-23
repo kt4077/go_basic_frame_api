@@ -4,6 +4,8 @@
 
 > 当前项目仍在持续完善中，欢迎通过 Issue 或 Pull Request 提交问题与改进建议。
 
+仓库地址：[https://gitee.com/open-source-project-open/go_basic_frame_api](https://gitee.com/open-source-project-open/go_basic_frame_api)
+
 ## 特性
 
 - 管理端 API 与用户端 API 独立启动、独立路由，可分别部署。
@@ -73,8 +75,8 @@ server_api/
 ### 1. 获取代码并安装依赖
 
 ```bash
-git clone <your-repository-url>
-cd go_backend_frame/server_api
+git clone https://gitee.com/open-source-project-open/go_basic_frame_api.git
+cd go_basic_frame_api
 go mod download
 ```
 
@@ -245,6 +247,14 @@ go vet ./...
 4. Pull Request 中说明改动目的、数据库影响、兼容性和验证结果。
 
 安全漏洞请不要在公开 Issue 中披露，应通过项目维护者提供的私密渠道报告。
+
+## 微信交流
+
+如需交流项目使用、功能建议或参与贡献，可以扫描下方二维码：
+
+<p align="center">
+  <img src="./images/wechat.png" width="280" height="350" alt="微信交流二维码" />
+</p>
 
 ## License
 
