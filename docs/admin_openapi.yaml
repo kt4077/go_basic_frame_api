@@ -1,0 +1,2849 @@
+openapi: 3.0.3
+
+info:
+  title: server_api 管理端 API
+  description: |
+    Go + Gin + GORM(MySQL) + Redis + JWT 后台管理端接口文档。
+
+    ## 通用约定
+    - 管理端默认监听 `http://127.0.0.1:8001`，所有业务路径以 `/admin` 开头。
+    - 除登录、公开平台配置、静态文件访问外，其余接口均需在请求头携带
+      `Authorization: Bearer <token>`（登录接口返回的 `token`）。
+    - 管理端业务接口还会校验**接口级权限**：菜单/按钮通过 `api_path` 绑定接口，
+      格式为 `METHOD:/path`（如 `POST:/admin/user/add`）。超级管理员直接放行。
+    - 权限不足返回业务码 `403`；Redis 等依赖异常返回 `503`。
+
+    ## 统一响应结构
+    ```json
+    { "code": 0, "msg": "success", "data": {} }
+    ```
+    HTTP 状态码恒为 200，通过 `code` 判断业务结果：
+
+    | code | 含义 |
+    | --- | --- |
+    | 0 | 成功 |
+    | 400 | 参数错误 |
+    | 401 | 未登录或登录已失效 |
+    | 403 | 无接口权限 |
+    | 500 | 业务处理失败（msg 返回具体原因） |
+    | 503 | 依赖服务（Redis/数据库）暂时不可用 |
+
+    ## 通用枚举
+    - 启用状态 status：1 启用、2 禁用
+    - 菜单类型 type：1 目录、2 菜单页面、3 按钮
+    - 菜单显示状态 status：1 显示、2 隐藏
+    - 短信服务商 provider：1 阿里云、2 腾讯云
+    - 短信模板类型 type：1 验证码、2 通知、3 营销
+    - 短信发送状态 status：1 待发送、2 成功、3 失败
+    - 微信应用类型 type：1 公众号、2 开放平台、3 小程序
+    - 支付渠道 channel：1 微信支付、2 支付宝
+    - 存储渠道 channel：local 本地、alioss 阿里云OSS、cos 腾讯云COS、qiniu 七牛云Kodo、minio MinIO/S3
+    - 是否超级管理员 is_super：0 否、1 是（超级管理员拥有全部权限）
+  version: 1.0.0
+  license:
+    name: MIT
+
+servers:
+  - url: http://127.0.0.1:8001
+    description: 本地开发环境（管理端）
+  - url: http://localhost:8001
+    description: 本地开发环境（localhost）
+  - url: /
+    description: 自定义网关/域名（导入 Apifox 后可在环境里配置 baseURL）
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: 登录与会话
+    description: 登录、退出、当前用户信息、个人资料、修改密码、菜单路由与接口权限
+  - name: 系统总览
+    description: 首页统计卡片、登录趋势、最近登录、部门用户分布
+  - name: 菜单管理
+    description: 菜单/目录/按钮的列表、树、增删改
+  - name: 角色管理
+    description: 角色增删改查、角色树、分配菜单、查看角色用户
+  - name: 用户管理
+    description: 管理员账号的增删改查、重置密码、踢下线
+  - name: 部门管理
+    description: 部门树与增删改
+  - name: 文件上传
+    description: 通用文件上传（multipart，字段名 file，单文件最大 50MB）
+  - name: 操作日志
+    description: 管理端操作日志分页查询
+  - name: 存储渠道
+    description: 对象存储渠道配置（本地/阿里云OSS/腾讯云COS/七牛云/MinIO）
+  - name: 短信配置
+    description: 短信服务商配置、签名、模板与发送记录
+  - name: 微信配置
+    description: 微信公众号/开放平台/小程序配置
+  - name: 支付配置
+    description: 微信支付/支付宝渠道配置
+  - name: 平台配置
+    description: 管理端 Logo/系统名称、用户端默认昵称/头像
+  - name: 文件访问
+    description: 本地存储文件的公开访问入口
+
+paths:
+  ########################## 文件访问 ##########################
+  /files/{filepath}:
+    get:
+      tags: [文件访问]
+      summary: 访问上传的本地文件
+      description: |
+        仅当默认存储渠道为本地存储（local）时适用，直接返回文件内容。
+        云存储渠道请通过其访问域名访问。
+      operationId: getFile
+      security: []
+      parameters:
+        - name: filepath
+          in: path
+          required: true
+          description: 文件相对路径，如 2026/09/23/xxx.png
+          schema:
+            type: string
+          example: 2026/09/23/8f14e45fceea167a5a36dedd4bea2543.png
+      responses:
+        '200':
+          description: 文件内容
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: 文件不存在
+
+  ########################## 登录与会话 ##########################
+  /admin/login:
+    post:
+      tags: [登录与会话]
+      summary: 管理端登录
+      description: |
+        校验账号密码后签发 JWT，并在 Redis 写入 `login:<login_id>` 实现主动过期。
+        账号被禁用时返回业务错误。
+      operationId: adminLogin
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginReq'
+            example:
+              username: admin
+              password: "123456"
+      responses:
+        '200':
+          description: 登录结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/LoginRes'
+              example:
+                code: 0
+                msg: success
+                data:
+                  token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+  /admin/logout:
+    post:
+      tags: [登录与会话]
+      summary: 退出登录
+      description: 删除当前登录会话的 Redis Key，JWT 立即失效。
+      operationId: adminLogout
+      responses:
+        '200':
+          description: 退出成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+              example:
+                code: 0
+                msg: success
+
+  /admin/me:
+    get:
+      tags: [登录与会话]
+      summary: 当前登录用户信息
+      operationId: adminMe
+      responses:
+        '200':
+          description: 当前用户信息（含角色列表）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserItem'
+
+  /admin/profile/update:
+    post:
+      tags: [登录与会话]
+      summary: 修改当前管理员个人资料
+      description: 仅可修改昵称、头像、手机号、邮箱，不能修改权限、部门与账号状态。
+      operationId: adminUpdateProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdateReq'
+            example:
+              nickname: 超级管理员
+              avatar: 2026/09/23/8f14e45fceea167a5a36dedd4bea2543.png
+              mobile: "13800138000"
+              email: admin@example.com
+      responses:
+        '200':
+          description: 更新后的用户信息
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserItem'
+
+  /admin/profile/avatar:
+    post:
+      tags: [登录与会话]
+      summary: 单独修改当前管理员头像
+      description: 只更新头像字段，不影响其他未保存的个人资料。
+      operationId: adminUpdateAvatar
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AvatarUpdateReq'
+            example:
+              avatar: 2026/09/23/8f14e45fceea167a5a36dedd4bea2543.png
+      responses:
+        '200':
+          description: 更新后的用户信息
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserItem'
+
+  /admin/routers:
+    get:
+      tags: [登录与会话]
+      summary: 当前用户的菜单树（前端路由）
+      description: |
+        返回目录 + 菜单页面（不含按钮）的树形结构，用于渲染侧边导航。
+        超级管理员返回全部显示中的菜单。
+      operationId: adminGetRouters
+      responses:
+        '200':
+          description: 菜单树
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/MenuTreeItem'
+
+  /admin/permissions:
+    get:
+      tags: [登录与会话]
+      summary: 当前用户的接口权限列表
+      description: |
+        返回当前用户拥有的接口权限集合（格式 `METHOD:/path`），用于前端按钮显隐。
+        超级管理员返回 `["*"]`。
+      operationId: adminPermissions
+      responses:
+        '200':
+          description: 权限列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: string
+              example:
+                code: 0
+                msg: success
+                data:
+                  - GET:/admin/user/list
+                  - POST:/admin/user/add
+                  - POST:/admin/user/update
+
+  /admin/change_password:
+    post:
+      tags: [登录与会话]
+      summary: 修改当前管理员密码
+      description: 修改成功后会踢掉该账号所有在线会话，需要重新登录。
+      operationId: adminChangePassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordReq'
+            example:
+              old_password: "123456"
+              new_password: "654321"
+      responses:
+        '200':
+          description: 修改成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+  ########################## 系统总览 ##########################
+  /admin/dashboard/overview:
+    get:
+      tags: [系统总览]
+      summary: 系统总览统计
+      operationId: adminDashboardOverview
+      responses:
+        '200':
+          description: 总览数据
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/OverviewRes'
+
+  ########################## 菜单管理 ##########################
+  /admin/menu/list:
+    get:
+      tags: [菜单管理]
+      summary: 菜单列表（平铺）
+      operationId: adminMenuList
+      parameters:
+        - name: name
+          in: query
+          description: 菜单名称（模糊匹配）
+          schema:
+            type: string
+        - name: type
+          in: query
+          description: 菜单类型 1目录 2菜单 3按钮
+          schema:
+            type: integer
+            enum: [1, 2, 3]
+      responses:
+        '200':
+          description: 菜单列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/MenuItem'
+
+  /admin/menu/tree:
+    get:
+      tags: [菜单管理]
+      summary: 菜单树
+      operationId: adminMenuTree
+      responses:
+        '200':
+          description: 菜单树
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/MenuTreeItem'
+
+  /admin/menu/add:
+    post:
+      tags: [菜单管理]
+      summary: 新增菜单/按钮
+      description: 类型为按钮（type=3）时，`api_path` 必填，需绑定后端接口地址。
+      operationId: adminMenuCreate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MenuSaveReq'
+            example:
+              name: 用户管理
+              type: 2
+              parent_id: 0
+              path: /system/user
+              icon: User
+              sort: 1
+              status: 1
+              remark: 用户管理页面
+      responses:
+        '200':
+          description: 新增后的菜单
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MenuItem'
+
+  /admin/menu/update:
+    post:
+      tags: [菜单管理]
+      summary: 修改菜单/按钮
+      description: |
+        必须传 id；上级菜单不能选择自身或其子孙节点。
+        菜单变更后会自动清除全部权限缓存。
+      operationId: adminMenuUpdate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MenuSaveReq'
+            example:
+              id: 10
+              name: 用户管理
+              type: 2
+              parent_id: 1
+              path: /system/user
+              sort: 1
+              status: 1
+      responses:
+        '200':
+          description: 修改后的菜单
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MenuItem'
+
+  /admin/menu/delete:
+    post:
+      tags: [菜单管理]
+      summary: 删除菜单/按钮
+      description: 存在子级或已被角色绑定时不允许删除。
+      operationId: adminMenuDelete
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IDReq'
+            example:
+              id: 10
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+  ########################## 角色管理 ##########################
+  /admin/role/list:
+    get:
+      tags: [角色管理]
+      summary: 角色分页列表
+      operationId: adminRoleList
+      parameters:
+        - $ref: '#/components/parameters/NameQuery'
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/PageSizeQuery'
+      responses:
+        '200':
+          description: 角色列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RoleListRes'
+
+  /admin/role/tree:
+    get:
+      tags: [角色管理]
+      summary: 角色树
+      description: 角色通过 parent_id 构成树，上级角色自动继承后代角色的权限。
+      operationId: adminRoleTree
+      responses:
+        '200':
+          description: 角色树
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/RoleTreeItem'
+
+  /admin/role/add:
+    post:
+      tags: [角色管理]
+      summary: 新增角色
+      operationId: adminRoleCreate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleSaveReq'
+            example:
+              name: 运营专员
+              code: operator
+              parent_id: 0
+              sort: 1
+              status: 1
+              remark: 仅系统总览权限
+      responses:
+        '200':
+          description: 新增后的角色
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RoleItem'
+
+  /admin/role/update:
+    post:
+      tags: [角色管理]
+      summary: 修改角色
+      operationId: adminRoleUpdate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleSaveReq'
+            example:
+              id: 2
+              name: 运营专员
+              code: operator
+              parent_id: 1
+              sort: 1
+              status: 1
+      responses:
+        '200':
+          description: 修改后的角色
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RoleItem'
+
+  /admin/role/delete:
+    post:
+      tags: [角色管理]
+      summary: 删除角色
+      operationId: adminRoleDelete
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IDReq'
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+  /admin/role/menus:
+    get:
+      tags: [角色管理]
+      summary: 查询角色已绑定的菜单/按钮 ID
+      operationId: adminRoleMenuIDs
+      parameters:
+        - $ref: '#/components/parameters/IDQuery'
+      responses:
+        '200':
+          description: 菜单ID列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: integer
+              example:
+                code: 0
+                msg: success
+                data: [1, 2, 10, 11]
+
+  /admin/role/assign_menus:
+    post:
+      tags: [角色管理]
+      summary: 给角色分配菜单/按钮权限
+      description: 全量覆盖式分配，menu_ids 为空表示清空该角色权限。
+      operationId: adminRoleAssignMenus
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignMenusReq'
+            example:
+              role_id: 2
+              menu_ids: [1, 2, 10, 11]
+      responses:
+        '200':
+          description: 分配成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+  /admin/role/users:
+    get:
+      tags: [角色管理]
+      summary: 查询角色下的用户 ID
+      operationId: adminRoleUserIDs
+      parameters:
+        - $ref: '#/components/parameters/IDQuery'
+      responses:
+        '200':
+          description: 用户ID列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: integer
+
+  ########################## 用户管理 ##########################
+  /admin/user/list:
+    get:
+      tags: [用户管理]
+      summary: 用户分页列表
+      operationId: adminUserList
+      parameters:
+        - name: keyword
+          in: query
+          description: 搜索关键字（账号/昵称/手机号）
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: 状态 1启用 2禁用
+          schema:
+            type: integer
+            enum: [1, 2]
+        - name: dept_id
+          in: query
+          description: 部门ID
+          schema:
+            type: integer
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/PageSizeQuery'
+      responses:
+        '200':
+          description: 用户列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserListRes'
+
+  /admin/user/add:
+    post:
+      tags: [用户管理]
+      summary: 新增用户
+      operationId: adminUserCreate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserSaveReq'
+            example:
+              username: lisi
+              password: "123456"
+              nickname: 李四
+              mobile: "13800138001"
+              email: lisi@example.com
+              dept_id: 1
+              status: 1
+              is_super: 0
+              role_ids: [2]
+      responses:
+        '200':
+          description: 新增后的用户
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserItem'
+
+  /admin/user/update:
+    post:
+      tags: [用户管理]
+      summary: 修改用户
+      description: 必须传 id；password 为空表示不修改密码。超级管理员不可被禁用或删除。
+      operationId: adminUserUpdate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserSaveReq'
+            example:
+              id: 3
+              username: lisi
+              nickname: 李四
+              dept_id: 1
+              status: 1
+              role_ids: [2, 3]
+      responses:
+        '200':
+          description: 修改后的用户
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserItem'
+
+  /admin/user/delete:
+    post:
+      tags: [用户管理]
+      summary: 删除用户
+      description: 删除后同时清除该用户角色绑定并踢掉其全部在线会话。
+      operationId: adminUserDelete
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IDReq'
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+  /admin/user/reset_password:
+    post:
+      tags: [用户管理]
+      summary: 重置用户密码
+      description: 重置后该用户全部在线会话立即失效。
+      operationId: adminUserResetPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordReq'
+            example:
+              id: 3
+              password: "654321"
+      responses:
+        '200':
+          description: 重置成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+  /admin/user/kick:
+    post:
+      tags: [用户管理]
+      summary: 踢用户下线
+      description: 使该用户所有在线会话立即失效，超级管理员不可被踢。
+      operationId: adminUserKick
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IDReq'
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+  ########################## 部门管理 ##########################
+  /admin/dept/tree:
+    get:
+      tags: [部门管理]
+      summary: 部门树
+      operationId: adminDeptTree
+      responses:
+        '200':
+          description: 部门树
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/DeptTreeItem'
+
+  /admin/dept/add:
+    post:
+      tags: [部门管理]
+      summary: 新增部门
+      operationId: adminDeptCreate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeptSaveReq'
+            example:
+              name: 技术部
+              parent_id: 0
+              sort: 1
+              leader: 张三
+              remark: 技术研发
+      responses:
+        '200':
+          description: 新增后的部门
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DeptItem'
+
+  /admin/dept/update:
+    post:
+      tags: [部门管理]
+      summary: 修改部门
+      operationId: adminDeptUpdate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeptSaveReq'
+            example:
+              id: 2
+              name: 技术部
+              parent_id: 1
+              sort: 1
+              leader: 张三
+      responses:
+        '200':
+          description: 修改后的部门
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DeptItem'
+
+  /admin/dept/delete:
+    post:
+      tags: [部门管理]
+      summary: 删除部门
+      operationId: adminDeptDelete
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IDReq'
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+  ########################## 文件上传 ##########################
+  /admin/upload/file:
+    post:
+      tags: [文件上传]
+      summary: 上传文件
+      description: |
+        multipart/form-data，字段名固定为 `file`，单文件最大 50MB。
+        文件会写入当前默认存储渠道，并在 `sys_upload_file` 记录上传档案；
+        响应的 `url` 按当前默认存储配置动态生成。
+      operationId: adminUploadFile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: 待上传文件（最大 50MB）
+              required: [file]
+      responses:
+        '200':
+          description: 上传结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/FileResponse'
+
+  ########################## 操作日志 ##########################
+  /admin/log/operation/list:
+    get:
+      tags: [操作日志]
+      summary: 操作日志分页列表
+      description: 记录方法、路由、参数、响应、IP、UA、耗时与操作人；敏感字段（password/token/secret/*_key）已脱敏。
+      operationId: adminOperationLogList
+      parameters:
+        - name: username
+          in: query
+          description: 操作账号
+          schema:
+            type: string
+        - name: start_time
+          in: query
+          description: 开始时间，如 2026-09-01 00:00:00
+          schema:
+            type: string
+        - name: end_time
+          in: query
+          description: 结束时间，如 2026-09-30 23:59:59
+          schema:
+            type: string
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/PageSizeQuery'
+      responses:
+        '200':
+          description: 操作日志列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/OperationLogListRes'
+
+  ########################## 存储渠道 ##########################
+  /admin/storage/list:
+    get:
+      tags: [存储渠道]
+      summary: 存储渠道列表
+      operationId: adminStorageList
+      responses:
+        '200':
+          description: 存储渠道列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/StorageItem'
+
+  /admin/storage/add:
+    post:
+      tags: [存储渠道]
+      summary: 新增存储渠道
+      operationId: adminStorageCreate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StorageSaveReq'
+            example:
+              name: 本地存储
+              channel: local
+              params: '{"domain":"/files"}'
+              is_default: 1
+              status: 1
+              sort: 1
+      responses:
+        '200':
+          description: 新增后的渠道
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/StorageItem'
+
+  /admin/storage/update:
+    post:
+      tags: [存储渠道]
+      summary: 修改存储渠道
+      operationId: adminStorageUpdate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StorageSaveReq'
+            example:
+              id: 1
+              name: 本地存储
+              channel: local
+              params: '{"domain":"/files"}'
+              status: 1
+      responses:
+        '200':
+          description: 修改后的渠道
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/StorageItem'
+
+  /admin/storage/set_default:
+    post:
+      tags: [存储渠道]
+      summary: 设为默认存储渠道
+      description: 同一时间只允许存在一个未删除的默认渠道。
+      operationId: adminStorageSetDefault
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IDReq'
+      responses:
+        '200':
+          description: 设置成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+  /admin/storage/delete:
+    post:
+      tags: [存储渠道]
+      summary: 删除存储渠道
+      operationId: adminStorageDelete
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IDReq'
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+  ########################## 短信配置 ##########################
+  /admin/sms/config/list:
+    get:
+      tags: [短信配置]
+      summary: 短信服务商配置列表
+      operationId: adminSMSConfigList
+      responses:
+        '200':
+          description: 配置列表（不返回密钥）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/SMSConfigItem'
+
+  /admin/sms/config/save:
+    post:
+      tags: [短信配置]
+      summary: 新增/修改短信服务商配置
+      description: 传 id 为修改，不传为新增；access_key_secret 为空表示不修改原密钥。
+      operationId: adminSMSSaveConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SMSConfigSaveReq'
+            example:
+              name: 阿里云短信
+              provider: 1
+              access_key_id: LTAI5txxxxxxxxxx
+              access_key_secret: xxxxxxxxxxxxxx
+              endpoint: dysmsapi.aliyuncs.com
+              status: 1
+      responses:
+        '200':
+          description: 保存后的配置
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SMSConfigItem'
+
+  /admin/sms/config/delete:
+    post:
+      tags: [短信配置]
+      summary: 删除短信服务商配置
+      operationId: adminSMSDeleteConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IDReq'
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+  /admin/sms/signature/list:
+    get:
+      tags: [短信配置]
+      summary: 短信签名列表
+      operationId: adminSMSSignatureList
+      responses:
+        '200':
+          description: 签名列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/SMSSignatureItem'
+
+  /admin/sms/signature/save:
+    post:
+      tags: [短信配置]
+      summary: 新增/修改短信签名
+      operationId: adminSMSSaveSignature
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SMSSignatureSaveReq'
+            example:
+              config_id: 1
+              name: 示例科技
+              sign_code: 示例科技
+              status: 1
+      responses:
+        '200':
+          description: 保存后的签名
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SMSSignatureItem'
+
+  /admin/sms/signature/delete:
+    post:
+      tags: [短信配置]
+      summary: 删除短信签名
+      operationId: adminSMSDeleteSignature
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IDReq'
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+  /admin/sms/template/list:
+    get:
+      tags: [短信配置]
+      summary: 短信模板列表
+      operationId: adminSMSTemplateList
+      responses:
+        '200':
+          description: 模板列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/SMSTemplateItem'
+
+  /admin/sms/template/save:
+    post:
+      tags: [短信配置]
+      summary: 新增/修改短信模板
+      operationId: adminSMSSaveTemplate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SMSTemplateSaveReq'
+            example:
+              config_id: 1
+              name: 登录验证码
+              template_code: SMS_123456789
+              type: 1
+              content: 您的验证码为${code}，5分钟内有效。
+              status: 1
+      responses:
+        '200':
+          description: 保存后的模板
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SMSTemplateItem'
+
+  /admin/sms/template/delete:
+    post:
+      tags: [短信配置]
+      summary: 删除短信模板
+      operationId: adminSMSDeleteTemplate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IDReq'
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+  /admin/sms/log/list:
+    get:
+      tags: [短信配置]
+      summary: 短信发送记录
+      operationId: adminSMSLogList
+      parameters:
+        - name: mobile
+          in: query
+          description: 手机号
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: 发送状态 1待发送 2成功 3失败
+          schema:
+            type: integer
+            enum: [1, 2, 3]
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/PageSizeQuery'
+      responses:
+        '200':
+          description: 发送记录
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SMSLogListRes'
+
+  ########################## 微信配置 ##########################
+  /admin/wechat/config/list:
+    get:
+      tags: [微信配置]
+      summary: 微信配置列表
+      operationId: adminWechatConfigList
+      parameters:
+        - name: type
+          in: query
+          description: 应用类型 1公众号 2开放平台 3小程序；不传返回全部
+          schema:
+            type: integer
+            enum: [1, 2, 3]
+      responses:
+        '200':
+          description: 配置列表（不返回密钥）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/WechatConfigItem'
+
+  /admin/wechat/config/save:
+    post:
+      tags: [微信配置]
+      summary: 新增/修改微信配置
+      operationId: adminWechatConfigSave
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WechatConfigSaveReq'
+            example:
+              name: 示例小程序
+              type: 3
+              app_id: wx1234567890abcdef
+              app_secret: xxxxxxxxxxxxxxxx
+              token: mytoken
+              aes_key: xxxxxxxxxxxxxxxx
+              status: 1
+      responses:
+        '200':
+          description: 保存后的配置
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WechatConfigItem'
+
+  /admin/wechat/config/delete:
+    post:
+      tags: [微信配置]
+      summary: 删除微信配置
+      operationId: adminWechatConfigDelete
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IDReq'
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+  ########################## 支付配置 ##########################
+  /admin/payment/config/list:
+    get:
+      tags: [支付配置]
+      summary: 支付渠道配置列表
+      operationId: adminPaymentConfigList
+      parameters:
+        - name: channel
+          in: query
+          description: 支付渠道 1微信支付 2支付宝；不传返回全部
+          schema:
+            type: integer
+            enum: [1, 2]
+      responses:
+        '200':
+          description: 配置列表（不返回密钥）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/PaymentConfigItem'
+
+  /admin/payment/config/save:
+    post:
+      tags: [支付配置]
+      summary: 新增/修改支付渠道配置
+      operationId: adminPaymentConfigSave
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentConfigSaveReq'
+            example:
+              name: 微信支付-商户号1
+              channel: 1
+              app_id: wx1234567890abcdef
+              merchant_id: "1900000001"
+              api_v3_key: xxxxxxxxxxxxxxxxxxxxxxxx
+              cert_serial_no: 1234567890ABCDEF
+              notify_url: https://api.example.com/pay/notify/wechat
+              status: 1
+              sort: 1
+      responses:
+        '200':
+          description: 保存后的配置
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PaymentConfigItem'
+
+  /admin/payment/config/delete:
+    post:
+      tags: [支付配置]
+      summary: 删除支付渠道配置
+      operationId: adminPaymentConfigDelete
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IDReq'
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+  ########################## 平台配置 ##########################
+  /admin/platform/public:
+    get:
+      tags: [平台配置]
+      summary: 查询管理端公开配置（无需登录）
+      description: 登录页展示用，返回系统名称与 Logo 访问地址。
+      operationId: adminPlatformPublicDetail
+      security: []
+      responses:
+        '200':
+          description: 管理端平台配置
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AdminPlatformConfigRes'
+
+  /admin/platform/admin/detail:
+    get:
+      tags: [平台配置]
+      summary: 查询管理端平台配置
+      operationId: adminPlatformAdminDetail
+      responses:
+        '200':
+          description: 管理端平台配置
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AdminPlatformConfigRes'
+
+  /admin/platform/admin/save:
+    post:
+      tags: [平台配置]
+      summary: 保存管理端平台配置
+      description: 按平台类型 upsert，重复保存不会产生多条记录。
+      operationId: adminPlatformSaveAdmin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminPlatformSaveReq'
+            example:
+              logo: 2026/09/23/8f14e45fceea167a5a36dedd4bea2543.png
+              system_name: 后台管理系统
+      responses:
+        '200':
+          description: 保存后的配置
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AdminPlatformConfigRes'
+
+  /admin/platform/user/detail:
+    get:
+      tags: [平台配置]
+      summary: 查询用户端平台配置
+      operationId: adminPlatformUserDetail
+      responses:
+        '200':
+          description: 用户端平台配置
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserPlatformConfigRes'
+
+  /admin/platform/user/save:
+    post:
+      tags: [平台配置]
+      summary: 保存用户端平台配置
+      operationId: adminPlatformSaveUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserPlatformSaveReq'
+            example:
+              default_nickname: 新用户
+              default_avatar: 2026/09/23/8f14e45fceea167a5a36dedd4bea2543.png
+      responses:
+        '200':
+          description: 保存后的配置
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserPlatformConfigRes'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: '登录接口返回的 token，请求头格式：Authorization: Bearer <token>'
+
+  parameters:
+    PageQuery:
+      name: page
+      in: query
+      description: 页码，默认 1
+      schema:
+        type: integer
+        default: 1
+      example: 1
+    PageSizeQuery:
+      name: page_size
+      in: query
+      description: 每页数量，默认 20，最大 100
+      schema:
+        type: integer
+        default: 20
+      example: 20
+    NameQuery:
+      name: name
+      in: query
+      description: 名称（模糊匹配）
+      schema:
+        type: string
+    IDQuery:
+      name: id
+      in: query
+      required: true
+      description: 主键ID
+      schema:
+        type: integer
+
+  schemas:
+    # ---------------- 通用 ----------------
+    Response:
+      type: object
+      description: 统一响应结构（HTTP 状态码恒为 200）
+      properties:
+        code:
+          type: integer
+          description: 业务响应码 0成功 400参数错误 401未登录 403无权限 500业务失败 503依赖不可用
+          example: 0
+        msg:
+          type: string
+          description: 提示信息，失败时为具体原因
+          example: success
+        data:
+          description: 业务数据，部分接口无 data 字段
+          nullable: true
+      required: [code, msg]
+
+    IDReq:
+      type: object
+      description: 主键ID请求体
+      properties:
+        id:
+          type: integer
+          description: 主键ID
+          example: 1
+      required: [id]
+
+    BaseItem:
+      type: object
+      description: 通用基础字段
+      properties:
+        id:
+          type: integer
+          description: 主键ID
+          example: 1
+        created_at:
+          type: string
+          format: date-time
+          description: 创建时间
+        updated_at:
+          type: string
+          format: date-time
+          description: 更新时间
+
+    # ---------------- 登录与会话 ----------------
+    LoginReq:
+      type: object
+      properties:
+        username:
+          type: string
+          description: 登录账号
+          example: admin
+        password:
+          type: string
+          description: 登录密码
+          example: "123456"
+      required: [username, password]
+
+    LoginRes:
+      type: object
+      properties:
+        token:
+          type: string
+          description: 'JWT 访问令牌，携带方式：Authorization: Bearer <token>'
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+    ChangePasswordReq:
+      type: object
+      properties:
+        old_password:
+          type: string
+          description: 原密码
+          example: "123456"
+        new_password:
+          type: string
+          description: 新密码，至少 6 位
+          minLength: 6
+          example: "654321"
+      required: [old_password, new_password]
+
+    ProfileUpdateReq:
+      type: object
+      properties:
+        nickname:
+          type: string
+          description: 用户昵称，最长 32 字符
+          maxLength: 32
+          example: 超级管理员
+        avatar:
+          type: string
+          description: 头像相对路径（由上传接口返回）
+          maxLength: 1024
+          example: 2026/09/23/8f14e45fceea167a5a36dedd4bea2543.png
+        mobile:
+          type: string
+          description: 手机号，最长 16 字符
+          maxLength: 16
+          example: "13800138000"
+        email:
+          type: string
+          format: email
+          description: 邮箱，最长 64 字符
+          maxLength: 64
+          example: admin@example.com
+
+    AvatarUpdateReq:
+      type: object
+      properties:
+        avatar:
+          type: string
+          description: 头像相对路径（由上传接口返回）
+          maxLength: 1024
+          example: 2026/09/23/8f14e45fceea167a5a36dedd4bea2543.png
+      required: [avatar]
+
+    # ---------------- 实体 ----------------
+    MenuItem:
+      allOf:
+        - $ref: '#/components/schemas/BaseItem'
+        - type: object
+          properties:
+            name:
+              type: string
+              description: 菜单名称
+              example: 用户管理
+            type:
+              type: integer
+              description: 类型 1目录 2菜单页面 3按钮
+              enum: [1, 2, 3]
+            parent_id:
+              type: integer
+              description: 上级菜单ID，0 为顶级
+            path:
+              type: string
+              description: 前端路由地址
+              example: /system/user
+            api_path:
+              type: string
+              description: 接口权限地址，按钮必填，多个用逗号分隔，如 POST:/admin/user/add
+              example: POST:/admin/user/add
+            icon:
+              type: string
+              description: 菜单图标
+              example: User
+            sort:
+              type: integer
+              description: 排序，越小越靠前
+            status:
+              type: integer
+              description: 显示状态 1显示 2隐藏
+              enum: [1, 2]
+            remark:
+              type: string
+              description: 备注
+
+    MenuTreeItem:
+      type: object
+      description: 菜单树节点
+      properties:
+        data:
+          $ref: '#/components/schemas/MenuItem'
+        children:
+          type: array
+          description: 子级节点
+          items:
+            $ref: '#/components/schemas/MenuTreeItem'
+
+    RoleItem:
+      allOf:
+        - $ref: '#/components/schemas/BaseItem'
+        - type: object
+          properties:
+            name:
+              type: string
+              description: 角色名称
+              example: 运营专员
+            code:
+              type: string
+              description: 角色编码（唯一）
+              example: operator
+            parent_id:
+              type: integer
+              description: 上级角色ID，0 为顶级
+            sort:
+              type: integer
+              description: 排序
+            status:
+              type: integer
+              description: 状态 1启用 2禁用
+              enum: [1, 2]
+            remark:
+              type: string
+              description: 备注
+
+    RoleTreeItem:
+      type: object
+      description: 角色树节点
+      properties:
+        data:
+          $ref: '#/components/schemas/RoleItem'
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoleTreeItem'
+
+    UserItem:
+      allOf:
+        - $ref: '#/components/schemas/BaseItem'
+        - type: object
+          properties:
+            username:
+              type: string
+              description: 登录账号
+              example: admin
+            nickname:
+              type: string
+              description: 用户昵称
+              example: 超级管理员
+            avatar:
+              type: string
+              description: 头像访问地址（按当前默认存储动态生成）
+              example: /files/2026/09/23/8f14e45fceea167a5a36dedd4bea2543.png
+            mobile:
+              type: string
+              description: 手机号
+            email:
+              type: string
+              description: 邮箱
+            dept_id:
+              type: integer
+              description: 部门ID
+            status:
+              type: integer
+              description: 状态 1启用 2禁用
+              enum: [1, 2]
+            is_super:
+              type: integer
+              description: 是否超级管理员 0否 1是
+              enum: [0, 1]
+            roles:
+              type: array
+              description: 角色列表
+              items:
+                $ref: '#/components/schemas/RoleItem'
+
+    DeptItem:
+      allOf:
+        - $ref: '#/components/schemas/BaseItem'
+        - type: object
+          properties:
+            name:
+              type: string
+              description: 部门名称
+              example: 技术部
+            parent_id:
+              type: integer
+              description: 上级部门ID，0 为顶级
+            sort:
+              type: integer
+              description: 排序
+            leader:
+              type: string
+              description: 负责人
+            remark:
+              type: string
+              description: 备注
+
+    DeptTreeItem:
+      type: object
+      description: 部门树节点
+      properties:
+        data:
+          $ref: '#/components/schemas/DeptItem'
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeptTreeItem'
+
+    StorageItem:
+      allOf:
+        - $ref: '#/components/schemas/BaseItem'
+        - type: object
+          properties:
+            name:
+              type: string
+              description: 渠道名称
+              example: 本地存储
+            channel:
+              type: string
+              description: 渠道类型 local/alioss/cos/qiniu/minio
+              enum: [local, alioss, cos, qiniu, minio]
+            params:
+              type: string
+              description: 渠道参数 JSON 字符串
+              example: '{"domain":"/files"}'
+            is_default:
+              type: integer
+              description: 是否默认 0否 1是
+              enum: [0, 1]
+            status:
+              type: integer
+              description: 状态 1启用 2禁用
+              enum: [1, 2]
+            sort:
+              type: integer
+              description: 排序
+            remark:
+              type: string
+              description: 备注
+
+    SMSConfigItem:
+      allOf:
+        - $ref: '#/components/schemas/BaseItem'
+        - type: object
+          properties:
+            name:
+              type: string
+              description: 配置名称
+            provider:
+              type: integer
+              description: 服务商 1阿里云 2腾讯云
+              enum: [1, 2]
+            access_key_id:
+              type: string
+              description: 访问密钥ID（不返回密钥 Secret）
+            endpoint:
+              type: string
+              description: 服务地址
+              example: dysmsapi.aliyuncs.com
+            status:
+              type: integer
+              description: 状态 1启用 2禁用
+              enum: [1, 2]
+            remark:
+              type: string
+              description: 备注
+
+    SMSSignatureItem:
+      allOf:
+        - $ref: '#/components/schemas/BaseItem'
+        - type: object
+          properties:
+            config_id:
+              type: integer
+              description: 所属短信配置ID
+            name:
+              type: string
+              description: 签名名称
+            sign_code:
+              type: string
+              description: 平台签名编码
+            status:
+              type: integer
+              description: 状态 1启用 2禁用
+              enum: [1, 2]
+            remark:
+              type: string
+              description: 备注
+
+    SMSTemplateItem:
+      allOf:
+        - $ref: '#/components/schemas/BaseItem'
+        - type: object
+          properties:
+            config_id:
+              type: integer
+              description: 所属短信配置ID
+            name:
+              type: string
+              description: 模板名称
+            template_code:
+              type: string
+              description: 平台模板编码
+              example: SMS_123456789
+            type:
+              type: integer
+              description: 模板类型 1验证码 2通知 3营销
+              enum: [1, 2, 3]
+            content:
+              type: string
+              description: 模板内容
+            status:
+              type: integer
+              description: 状态 1启用 2禁用
+              enum: [1, 2]
+            remark:
+              type: string
+              description: 备注
+
+    SMSLogItem:
+      type: object
+      description: 短信发送记录
+      properties:
+        id:
+          type: integer
+          description: 主键ID
+        created_at:
+          type: string
+          format: date-time
+          description: 记录创建时间
+        config_id:
+          type: integer
+          description: 短信配置ID
+        signature_id:
+          type: integer
+          description: 签名ID
+        template_id:
+          type: integer
+          description: 模板ID
+        mobile:
+          type: string
+          description: 手机号
+        content:
+          type: string
+          description: 发送内容
+        status:
+          type: integer
+          description: 发送状态 1待发送 2成功 3失败
+          enum: [1, 2, 3]
+        provider_message_id:
+          type: string
+          description: 服务商消息ID
+        error_message:
+          type: string
+          description: 失败原因
+        sent_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 发送时间
+
+    WechatConfigItem:
+      allOf:
+        - $ref: '#/components/schemas/BaseItem'
+        - type: object
+          properties:
+            name:
+              type: string
+              description: 配置名称
+            type:
+              type: integer
+              description: 应用类型 1公众号 2开放平台 3小程序
+              enum: [1, 2, 3]
+            app_id:
+              type: string
+              description: 微信AppID（不返回 Secret）
+            status:
+              type: integer
+              description: 状态 1启用 2禁用
+              enum: [1, 2]
+            remark:
+              type: string
+              description: 备注
+
+    PaymentConfigItem:
+      allOf:
+        - $ref: '#/components/schemas/BaseItem'
+        - type: object
+          properties:
+            name:
+              type: string
+              description: 配置名称
+            channel:
+              type: integer
+              description: 支付渠道 1微信支付 2支付宝
+              enum: [1, 2]
+            app_id:
+              type: string
+              description: 应用ID
+            merchant_id:
+              type: string
+              description: 商户号
+            cert_serial_no:
+              type: string
+              description: 证书序列号
+            notify_url:
+              type: string
+              description: 支付回调地址
+            status:
+              type: integer
+              description: 状态 1启用 2禁用
+              enum: [1, 2]
+            sort:
+              type: integer
+              description: 排序
+            remark:
+              type: string
+              description: 备注
+
+    OperationLogItem:
+      type: object
+      description: 操作日志
+      properties:
+        id:
+          type: integer
+          description: 主键ID
+        created_at:
+          type: string
+          format: date-time
+          description: 操作时间
+        updated_at:
+          type: string
+          format: date-time
+          description: 更新时间
+        user_id:
+          type: integer
+          nullable: true
+          description: 操作人ID
+        username:
+          type: string
+          description: 操作账号
+        method:
+          type: string
+          description: 请求方法
+          example: POST
+        path:
+          type: string
+          description: 请求路由（ Gin 路由模板）
+          example: /admin/user/add
+        request_params:
+          type: string
+          description: 请求参数（敏感字段已脱敏）
+        response_params:
+          type: string
+          description: 响应内容
+        ip:
+          type: string
+          description: 客户端IP
+        user_agent:
+          type: string
+          description: 用户代理
+        code:
+          type: integer
+          description: 业务响应码
+        cost_ms:
+          type: integer
+          format: int64
+          description: 耗时（毫秒）
+        client:
+          type: string
+          description: 客户端类型 admin/api
+
+    LoginRecordItem:
+      type: object
+      description: 登录流水记录
+      properties:
+        id:
+          type: integer
+          description: 主键ID
+        login_id:
+          type: string
+          description: 登录标识（UUID）
+        user_id:
+          type: integer
+          description: 用户ID
+        username:
+          type: string
+          description: 登录账号
+        client:
+          type: string
+          description: 客户端类型 admin/api
+        login_ip:
+          type: string
+          description: 登录IP
+        user_agent:
+          type: string
+          description: 用户代理
+        login_at:
+          type: string
+          format: date-time
+          description: 登录时间
+        logout_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 退出时间
+        status:
+          type: integer
+          description: 登录状态 1在线 2已退出 3被踢下线/禁用
+          enum: [1, 2, 3]
+
+    FileResponse:
+      type: object
+      description: 文件上传结果
+      properties:
+        id:
+          type: integer
+          description: 上传记录ID
+        file_name:
+          type: string
+          description: 原始文件名
+        hash_name:
+          type: string
+          description: 哈希文件名
+        size:
+          type: integer
+          format: int64
+          description: 文件大小（字节）
+        mime_type:
+          type: string
+          description: MIME 类型
+          example: image/png
+        relative_path:
+          type: string
+          description: 文件相对路径（业务字段请保存该值）
+          example: 2026/09/23/8f14e45fceea167a5a36dedd4bea2543.png
+        absolute_path:
+          type: string
+          description: 上传时的完整访问地址快照
+        url:
+          type: string
+          description: 当前可访问地址（按默认存储渠道动态生成）
+          example: /files/2026/09/23/8f14e45fceea167a5a36dedd4bea2543.png
+
+    # ---------------- 列表响应 ----------------
+    UserListRes:
+      type: object
+      properties:
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserItem'
+        total:
+          type: integer
+          format: int64
+          description: 数据总数
+          example: 12
+
+    RoleListRes:
+      type: object
+      properties:
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoleItem'
+        total:
+          type: integer
+          format: int64
+          description: 数据总数
+
+    SMSLogListRes:
+      type: object
+      properties:
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/SMSLogItem'
+        total:
+          type: integer
+          format: int64
+          description: 数据总数
+
+    OperationLogListRes:
+      type: object
+      properties:
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperationLogItem'
+        total:
+          type: integer
+          format: int64
+          description: 数据总数
+
+    # ---------------- 系统总览 ----------------
+    TrendItem:
+      type: object
+      properties:
+        name:
+          type: string
+          description: 统计日期
+          example: 09-23
+        value:
+          type: integer
+          format: int64
+          description: 统计数量
+
+    DeptUserItem:
+      type: object
+      properties:
+        dept_id:
+          type: integer
+          description: 部门ID
+        name:
+          type: string
+          description: 部门名称
+        total:
+          type: integer
+          format: int64
+          description: 用户数量
+
+    OverviewRes:
+      type: object
+      description: 系统总览
+      properties:
+        user_count:
+          type: integer
+          format: int64
+          description: 用户数量
+        role_count:
+          type: integer
+          format: int64
+          description: 角色数量
+        menu_count:
+          type: integer
+          format: int64
+          description: 菜单数量
+        dept_count:
+          type: integer
+          format: int64
+          description: 部门数量
+        online_count:
+          type: integer
+          format: int64
+          description: 在线用户数量
+        login_trend:
+          type: array
+          description: 登录趋势
+          items:
+            $ref: '#/components/schemas/TrendItem'
+        recent_login:
+          type: array
+          description: 最近登录记录
+          items:
+            $ref: '#/components/schemas/LoginRecordItem'
+        dept_users:
+          type: array
+          description: 部门用户分布
+          items:
+            $ref: '#/components/schemas/DeptUserItem'
+
+    # ---------------- 平台配置 ----------------
+    AdminPlatformConfigRes:
+      type: object
+      properties:
+        logo:
+          type: string
+          description: Logo 访问地址
+        logo_path:
+          type: string
+          description: Logo 相对路径
+        system_name:
+          type: string
+          description: 系统名称
+
+    UserPlatformConfigRes:
+      type: object
+      properties:
+        default_nickname:
+          type: string
+          description: 用户端默认昵称
+        default_avatar:
+          type: string
+          description: 默认头像访问地址
+        default_avatar_path:
+          type: string
+          description: 默认头像相对路径
+
+    AdminPlatformSaveReq:
+      type: object
+      properties:
+        logo:
+          type: string
+          description: Logo 相对路径（由上传接口返回的 relative_path）
+          maxLength: 500
+        system_name:
+          type: string
+          description: 系统名称，最长 100 字符
+          maxLength: 100
+          example: 后台管理系统
+      required: [system_name]
+
+    UserPlatformSaveReq:
+      type: object
+      properties:
+        default_nickname:
+          type: string
+          description: 默认昵称，最长 100 字符
+          maxLength: 100
+          example: 新用户
+        default_avatar:
+          type: string
+          description: 默认头像相对路径
+          maxLength: 500
+      required: [default_nickname]
+
+    # ---------------- 保存请求 ----------------
+    MenuSaveReq:
+      type: object
+      description: 菜单/按钮保存参数（传 id 为修改，不传为新增）
+      properties:
+        id:
+          type: integer
+          description: 主键ID，新增时不传
+        name:
+          type: string
+          description: 菜单名称
+        type:
+          type: integer
+          description: 类型 1目录 2菜单页面 3按钮
+          enum: [1, 2, 3]
+        parent_id:
+          type: integer
+          description: 上级菜单ID
+        path:
+          type: string
+          description: 前端路由地址
+        api_path:
+          type: string
+          description: 接口权限地址，按钮必填，多个用逗号分隔
+        icon:
+          type: string
+          description: 菜单图标
+        sort:
+          type: integer
+          description: 排序
+        status:
+          type: integer
+          description: 显示状态 1显示 2隐藏
+          enum: [1, 2]
+        remark:
+          type: string
+          description: 备注
+      required: [name, type]
+
+    RoleSaveReq:
+      type: object
+      description: 角色保存参数（传 id 为修改，不传为新增）
+      properties:
+        id:
+          type: integer
+          description: 主键ID，新增时不传
+        name:
+          type: string
+          description: 角色名称
+        code:
+          type: string
+          description: 角色编码（唯一）
+        parent_id:
+          type: integer
+          description: 上级角色ID
+        sort:
+          type: integer
+          description: 排序
+        status:
+          type: integer
+          description: 状态 1启用 2禁用
+          enum: [1, 2]
+        remark:
+          type: string
+          description: 备注
+      required: [name, code]
+
+    AssignMenusReq:
+      type: object
+      properties:
+        role_id:
+          type: integer
+          description: 角色ID
+          example: 2
+        menu_ids:
+          type: array
+          description: 菜单/按钮ID列表（全量覆盖，空数组表示清空）
+          items:
+            type: integer
+      required: [role_id]
+
+    UserSaveReq:
+      type: object
+      description: 用户保存参数（传 id 为修改，不传为新增）
+      properties:
+        id:
+          type: integer
+          description: 主键ID，新增时不传
+        username:
+          type: string
+          description: 登录账号，新增时必填
+        password:
+          type: string
+          description: 登录密码，新增时必填；修改时留空表示不修改
+        nickname:
+          type: string
+          description: 用户昵称
+        avatar:
+          type: string
+          description: 头像相对路径
+          maxLength: 1024
+        mobile:
+          type: string
+          description: 手机号
+        email:
+          type: string
+          description: 邮箱
+        dept_id:
+          type: integer
+          description: 部门ID
+        status:
+          type: integer
+          description: 状态 1启用 2禁用
+          enum: [1, 2]
+        is_super:
+          type: integer
+          description: 是否超级管理员 0否 1是
+          enum: [0, 1]
+        role_ids:
+          type: array
+          description: 角色ID列表
+          items:
+            type: integer
+
+    ResetPasswordReq:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: 用户ID
+          example: 3
+        password:
+          type: string
+          description: 新密码，至少 6 位
+          minLength: 6
+          example: "654321"
+      required: [id, password]
+
+    DeptSaveReq:
+      type: object
+      description: 部门保存参数（传 id 为修改，不传为新增）
+      properties:
+        id:
+          type: integer
+          description: 主键ID，新增时不传
+        name:
+          type: string
+          description: 部门名称
+        parent_id:
+          type: integer
+          description: 上级部门ID
+        sort:
+          type: integer
+          description: 排序
+        leader:
+          type: string
+          description: 负责人
+        remark:
+          type: string
+          description: 备注
+      required: [name]
+
+    StorageSaveReq:
+      type: object
+      description: 存储渠道保存参数（传 id 为修改，不传为新增）
+      properties:
+        id:
+          type: integer
+          description: 主键ID，新增时不传
+        name:
+          type: string
+          description: 渠道名称
+        channel:
+          type: string
+          description: 渠道类型
+          enum: [local, alioss, cos, qiniu, minio]
+        params:
+          type: string
+          description: |
+            渠道参数 JSON 字符串。
+            local: {"domain":"/files"}
+            alioss: {"bucket":"xxx","endpoint":"oss-cn-hangzhou.aliyuncs.com","access_key_id":"...","access_key_secret":"...","domain":"https://cdn.example.com"}
+            cos: {"bucket":"xxx-1250000000","region":"ap-guangzhou","secret_id":"...","secret_key":"...","domain":"..."}
+            qiniu: {"bucket":"xxx","access_key":"...","secret_key":"...","domain":"https://cdn.example.com"}（domain 必填）
+            minio: {"endpoint":"127.0.0.1:9000","bucket":"xxx","access_key":"...","secret_key":"...","domain":"..."}
+        is_default:
+          type: integer
+          description: 是否默认 0否 1是
+          enum: [0, 1]
+        status:
+          type: integer
+          description: 状态 1启用 2禁用
+          enum: [1, 2]
+        sort:
+          type: integer
+          description: 排序
+        remark:
+          type: string
+          description: 备注
+      required: [name, channel]
+
+    SMSConfigSaveReq:
+      type: object
+      description: 短信服务商配置保存参数
+      properties:
+        id:
+          type: integer
+          description: 主键ID，新增时不传
+        name:
+          type: string
+          description: 配置名称
+        provider:
+          type: integer
+          description: 服务商 1阿里云 2腾讯云
+          enum: [1, 2]
+        access_key_id:
+          type: string
+          description: 访问密钥ID
+        access_key_secret:
+          type: string
+          description: 访问密钥Secret，留空表示不修改
+        endpoint:
+          type: string
+          description: 服务地址
+        status:
+          type: integer
+          description: 状态 1启用 2禁用
+          enum: [1, 2]
+        remark:
+          type: string
+          description: 备注
+      required: [name, provider, access_key_id, status]
+
+    SMSSignatureSaveReq:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: 主键ID，新增时不传
+        config_id:
+          type: integer
+          description: 短信配置ID
+        name:
+          type: string
+          description: 签名名称
+        sign_code:
+          type: string
+          description: 平台签名编码
+        status:
+          type: integer
+          description: 状态 1启用 2禁用
+          enum: [1, 2]
+        remark:
+          type: string
+          description: 备注
+      required: [config_id, name, status]
+
+    SMSTemplateSaveReq:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: 主键ID，新增时不传
+        config_id:
+          type: integer
+          description: 短信配置ID
+        name:
+          type: string
+          description: 模板名称
+        template_code:
+          type: string
+          description: 平台模板编码
+        type:
+          type: integer
+          description: 模板类型 1验证码 2通知 3营销
+          enum: [1, 2, 3]
+        content:
+          type: string
+          description: 模板内容
+        status:
+          type: integer
+          description: 状态 1启用 2禁用
+          enum: [1, 2]
+        remark:
+          type: string
+          description: 备注
+      required: [config_id, name, template_code, type, status]
+
+    WechatConfigSaveReq:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: 主键ID，新增时不传
+        name:
+          type: string
+          description: 配置名称
+        type:
+          type: integer
+          description: 应用类型 1公众号 2开放平台 3小程序
+          enum: [1, 2, 3]
+        app_id:
+          type: string
+          description: 微信AppID
+        app_secret:
+          type: string
+          description: 微信AppSecret，留空表示不修改
+        token:
+          type: string
+          description: 消息校验Token
+        aes_key:
+          type: string
+          description: 消息加解密密钥
+        status:
+          type: integer
+          description: 状态 1启用 2禁用
+          enum: [1, 2]
+        remark:
+          type: string
+          description: 备注
+      required: [name, type, app_id, status]
+
+    PaymentConfigSaveReq:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: 主键ID，新增时不传
+        name:
+          type: string
+          description: 配置名称
+        channel:
+          type: integer
+          description: 支付渠道 1微信支付 2支付宝
+          enum: [1, 2]
+        app_id:
+          type: string
+          description: 应用ID
+        merchant_id:
+          type: string
+          description: 商户号
+        private_key:
+          type: string
+          description: 商户私钥（不返回）
+        public_key:
+          type: string
+          description: 平台公钥（不返回）
+        api_v3_key:
+          type: string
+          description: 微信支付 APIv3 密钥（不返回）
+        cert_serial_no:
+          type: string
+          description: 证书序列号
+        notify_url:
+          type: string
+          description: 支付回调地址
+        status:
+          type: integer
+          description: 状态 1启用 2禁用
+          enum: [1, 2]
+        sort:
+          type: integer
+          description: 排序
+        remark:
+          type: string
+          description: 备注
+      required: [name, channel, app_id, notify_url, status]
