@@ -36,9 +36,9 @@ config.local.yaml
 config.*.local.yaml
 *.local.yaml
 
-# 说明：config.yaml 内含数据库密码、JWT 密钥等敏感信息。
-# 若不想提交真实配置，可取消下一行注释，并另存一份 config.example.yaml 作为模板。
-# config.yaml
+# 运行时配置含敏感信息（数据库密码、JWT 密钥），不入库；
+# 请使用 config.example.yaml 复制生成 config.yaml
+config.yaml
 
 # 环境变量文件
 .env
