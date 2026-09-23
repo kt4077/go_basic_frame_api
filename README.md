@@ -4,7 +4,10 @@
 
 > 当前项目仍在持续完善中，欢迎通过 Issue 或 Pull Request 提交问题与改进建议。
 
-仓库地址：[https://gitee.com/open-source-project-open/go_basic_frame_api](https://gitee.com/open-source-project-open/go_basic_frame_api)
+配套仓库：
+
+- 管理端：[go_basic_frame_admin](https://gitee.com/open-source-project-open/go_basic_frame_admin)
+- 接口端：[go_basic_frame_api](https://gitee.com/open-source-project-open/go_basic_frame_api)
 
 ## 特性
 
