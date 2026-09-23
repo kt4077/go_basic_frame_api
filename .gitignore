@@ -1,0 +1,61 @@
+# 编译产物
+server_api
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+build/
+
+# Go 测试与覆盖率输出
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# Go 工作区与依赖缓存（vendor 目录如需提交请注释下一行）
+vendor/
+go.work
+go.work.sum
+
+# 运行时生成文件
+logs/
+*.log
+tmp/
+temp/
+.DS_Store
+
+# 上传文件目录（运行时生成，不入库）
+uploads/
+!uploads/.gitkeep
+
+# 本地配置覆盖（如 config.local.yaml），按需使用
+config.local.yaml
+config.*.local.yaml
+*.local.yaml
+
+# 说明：config.yaml 内含数据库密码、JWT 密钥等敏感信息。
+# 若不想提交真实配置，可取消下一行注释，并另存一份 config.example.yaml 作为模板。
+# config.yaml
+
+# 环境变量文件
+.env
+.env.*
+!.env.example
+
+# 编辑器 / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 证书与密钥
+*.pem
+*.key
+*.p12
+*.crt
+apiclient_cert.pem
+apiclient_key.pem
