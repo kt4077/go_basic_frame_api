@@ -1,365 +1,251 @@
-# server_api
+# Go Backend Frame · Server API
 
-基于 Go 的后台管理 / 用户端**双端 API 基础框架**：Gin + GORM(MySQL) + Redis + JWT，内置 RBAC 权限、菜单/部门/角色树、操作日志、统一文件上传（本地 / 阿里云 OSS / 腾讯云 COS / 七牛云 Kodo / MinIO）以及短信、微信、支付渠道配置能力。
+一个面向后台管理系统和用户端接口的 Go 基础框架。项目基于 Gin、GORM、MySQL、Redis 和 JWT，提供双端服务入口、RBAC 权限、动态菜单、登录会话、操作审计、文件上传及常见业务渠道配置。
 
-管理端与用户端代码、路由、启动命令完全分离，可独立部署或拆分迁移。
+> 当前项目仍在持续完善中，欢迎通过 Issue 或 Pull Request 提交问题与改进建议。
 
----
+## 特性
 
-## 一、技术栈
+- 管理端 API 与用户端 API 独立启动、独立路由，可分别部署。
+- JWT + Redis 登录态，支持主动退出、修改密码失效和管理员踢下线。
+- 菜单、角色、部门均支持树形结构，管理端支持接口级 RBAC 鉴权。
+- 统一请求响应、参数校验、分页、数据库错误和密码处理能力。
+- 自动记录管理端操作日志，请求敏感字段脱敏；日志查询本身不会重复写入日志。
+- 支持本地、阿里云 OSS、腾讯云 COS、七牛云 Kodo 和 MinIO 文件存储。
+- 业务表只保存文件相对路径，响应时根据当前存储配置补全访问地址。
+- 内置短信、微信、支付、存储和平台基础配置模块。
+- 服务启动自检、HTTP 超时控制和优雅停机。
+- 数据库统一使用 `utf8mb4_general_ci`。
 
-| 类别 | 选型 | 说明 |
-| --- | --- | --- |
-| 语言 | Go 1.26（`module server_api`） | 无 CGO 依赖，可交叉编译 |
-| Web 框架 | gin-gonic/gin v1.10 | 路由分组 + 中间件链 |
-| ORM | gorm.io/gorm v1.31 + mysql 驱动 | 不使用 AutoMigrate，表结构由 SQL 脚本维护 |
-| 缓存 / 会话 | redis/go-redis v9 | 登录态、权限缓存 |
-| 鉴权 | golang-jwt/jwt v5（HS256） | JWT + Redis 实现主动过期 |
-| CLI | spf13/cobra | `service admin` / `service api` / `version` 子命令 |
-| 配置 | gopkg.in/yaml.v3 | 单文件 YAML，直接反序列化 |
-| 密码 | golang.org/x/crypto/bcrypt | 默认 cost |
-| 对象存储 | 阿里云 OSS / 腾讯云 COS / 七牛云 Kodo / MinIO SDK | 统一 `Uploader` 接口 |
-| 其他 | google/uuid | 生成 `login_id` |
+## 技术栈
 
-日志使用标准库 `log` + Gin 自带 `Logger/Recovery`，GORM 开启慢 SQL（1s）告警；管理端业务操作写入 `sys_operation_log`。
+| 类别 | 技术 |
+| --- | --- |
+| 语言 | Go 1.26 |
+| Web | Gin 1.10 |
+| ORM | GORM 1.31 + MySQL Driver |
+| 缓存 | Redis 5+ |
+| 鉴权 | JWT v5 + Redis |
+| CLI | Cobra |
+| 配置 | YAML |
+| 密码 | bcrypt |
+| 存储 | Local / Aliyun OSS / Tencent COS / Qiniu / MinIO |
 
----
+## 项目结构
 
-## 二、目录结构
-
-```
+```text
 server_api/
-├── main.go                  # 入口：执行 cmd.RootCmd()
-├── cmd/                     # Cobra 子命令（service admin / service api / version）
-├── config/
-│   └── config.go            # 配置结构体、加载与默认值
-├── config.yaml              # 运行时配置（含敏感信息，生产环境请勿入库）
-├── config.example.yaml      # 配置模板（占位值，可安全提交）
-├── router/
-│   ├── admin.go             # 管理端路由（监听 server.admin_addr）
-│   └── api.go               # 用户端路由（监听 server.api_addr）
+├── cmd/                       # CLI 命令与服务生命周期
+├── config/                    # 配置结构和加载逻辑
 ├── internal/
-│   ├── common/              # 两端共用能力
-│   │   ├── app/             #   配置 + GORM + Redis 的初始化、健康检查、连接关闭
-│   │   ├── auth/            #   登录流水、JWT 签发/解析、踢人下线
-│   │   ├── enums/           #   业务枚举（状态、菜单类型、渠道、权限白名单等）
-│   │   ├── middleware/      #   CORS、JWT 登录鉴权
-│   │   ├── model/           #   GORM 数据模型（sys_* 表）
-│   │   └── upload/          #   上传业务、默认存储加载、本地文件访问
-│   ├── admin/               # 管理端模块
-│   │   ├── controller/      #   参数绑定 + 调 logic + 响应
-│   │   ├── logic/           #   业务逻辑（必须接收 *gin.Context）
-│   │   ├── middleware/      #   Permission（接口级权限）、OperationLog（操作日志）
-│   │   ├── param/           #   请求参数结构体（按功能分文件）
-│   │   ├── resp/            #   响应结构体（按功能分文件）
-│   │   └── permission/      #   RBAC 权限计算与缓存
-│   └── api/                 # 用户端模块（分层同上）
-├── pkg/
-│   ├── dberror/             # 数据库错误识别（如重复键 1062）
-│   ├── oss/                 # 多平台对象存储适配器（单文件上限 50MB）
-│   ├── pagination/          # 分页参数规范化（默认第 1 页、20 条，最大 100）
-│   ├── password/            # bcrypt 哈希与校验
-│   ├── response/            # 统一 JSON 响应封装
-│   └── tree/                # 泛型树工具（菜单/部门/角色树）
-├── sql/                     # 数据库脚本目录（建表 / 升级脚本）
-└── uploads/                 # 本地存储根目录（运行时生成，已忽略入库）
+│   ├── admin/                 # 管理端业务模块
+│   │   ├── controller/        # 参数绑定和统一响应
+│   │   ├── logic/             # 业务逻辑
+│   │   ├── middleware/        # 权限与操作日志
+│   │   ├── param/             # 请求结构
+│   │   ├── permission/        # RBAC 权限计算与缓存
+│   │   └── resp/              # 响应结构
+│   ├── api/                   # 用户端业务模块
+│   └── common/                # 双端共用的业务基础能力
+│       ├── app/               # MySQL、Redis 初始化与检查
+│       ├── auth/              # 登录态与 JWT
+│       ├── enums/             # 业务枚举
+│       ├── middleware/        # 通用中间件
+│       ├── model/             # GORM 数据模型
+│       └── upload/            # 上传和文件地址解析
+├── pkg/                       # 无业务归属的通用工具
+├── router/                    # admin/api 路由入口
+├── sql/                       # 数据库增量脚本
+├── uploads/                   # 本地上传目录，不提交到仓库
+├── config.example.yaml        # 配置模板
+├── go.mod
+└── main.go
 ```
 
-分层约定：
+## 环境要求
 
-- controller 只负责绑定参数与响应，业务逻辑一律下沉到 logic。
-- controller 调用 logic 时必须传入 `*gin.Context`，claims、IP、UA 等上下文统一在 logic 内获取。
-- 请求/响应结构体分别放 `param`、`resp`，且必须按功能拆分文件，禁止合并为单个 `param.go`。
-- 两端共用能力放 `internal/common/<功能>`；无业务归属的工具放 `pkg/<功能>`。
-
----
-
-## 三、快速开始
-
-### 1. 环境要求
-
-- Go 1.26+
-- MySQL 5.7+ / 8.0+（字符集 `utf8mb4`）
+- Go 1.26 或更高版本
+- MySQL 5.7+ 或 MySQL 8.0+
 - Redis 5+
+
+## 快速开始
+
+### 1. 获取代码并安装依赖
+
+```bash
+git clone <your-repository-url>
+cd go_backend_frame/server_api
+go mod download
+```
 
 ### 2. 初始化数据库
 
+项目不使用 `AutoMigrate`，数据库结构必须通过 SQL 脚本维护。
+
+当前 `sql/` 目录包含功能增量脚本，例如：
+
 ```bash
-# 执行建表脚本（脚本由部署包提供或放置于 sql/ 目录）
-mysql -uroot -p < sql/schema.sql
-
-# 已有库升级：按需执行对应的 upgrade_*.sql
+mysql -uroot -p your_database < sql/platform_config.sql
 ```
 
-服务启动时会校验 16 张必需表是否齐全，缺表会拒绝启动并提示：
+基础数据库初始化脚本应包含 `internal/common/model` 中声明的全部表。服务启动时会执行表完整性检查，缺表或 `sys_user` 没有初始账号时会拒绝启动。
 
-```
-缺少数据表 [...]，请先执行 sql/schema.sql 初始化数据库
-```
+> 当前仓库尚未提供完整的 `schema.sql`。正式对外发布前，建议补充一份可重复初始化的新库脚本，并将后续结构调整继续拆分为独立增量脚本。
 
-同时要求 `sys_user` 至少存在一条记录，否则同样拒绝启动。
-
-必需表清单：
-
-```
-sys_dept  sys_user  sys_role  sys_menu  sys_user_login  sys_user_role  sys_role_menu
-sys_operation_log  sys_storage_config  sys_upload_file
-sys_sms_config  sys_sms_signature  sys_sms_template  sys_sms_send_log
-sys_wechat_config  sys_payment_config
-```
-
-> 仓库当前 `sql/` 目录未内置脚本，请从部署包获取或使用自己维护的建表脚本；表结构可参照 `internal/common/model` 中的模型定义。
-
-### 3. 修改配置
+### 3. 创建配置文件
 
 ```bash
 cp config.example.yaml config.yaml
-vim config.yaml   # 填写 MySQL / Redis / JWT
 ```
+
+修改 MySQL、Redis 和 JWT 配置。生产环境必须替换 JWT 密钥：
+
+```bash
+openssl rand -hex 32
+```
+
+主要配置项：
+
+| 配置 | 说明 | 示例 |
+| --- | --- | --- |
+| `server.admin_addr` | 管理端 API 地址 | `:8001` |
+| `server.api_addr` | 用户端 API 地址 | `:8002` |
+| `mysql.*` | MySQL 连接和连接池 | 见配置模板 |
+| `redis.*` | Redis 地址、密码和 DB | 见配置模板 |
+| `jwt.secret` | JWT 签名密钥 | 随机强密钥 |
+| `jwt.expire_hours` | 登录有效期 | `24` |
+| `log.level` | 日志级别 | `info` |
+
+`config.yaml` 可能包含数据库密码和密钥，请勿将真实生产配置提交到公开仓库。
 
 ### 4. 启动服务
 
 ```bash
-# 管理端 API（默认 :8001）
-go run main.go service admin
+# 管理端 API，默认监听 :8001
+go run . service admin -c config.yaml
 
-# 用户端 API（默认 :8002）
-go run main.go service api
+# 用户端 API，默认监听 :8002
+go run . service api -c config.yaml
 ```
 
-### 5. 编译与运行
+### 5. 编译
 
 ```bash
-go build -o server_api .
+go build -o bin/server_api .
 
-./server_api service admin -c config.yaml
-./server_api service api   -c config.yaml
+./bin/server_api service admin -c config.yaml
+./bin/server_api service api -c config.yaml
 ```
 
----
+其他命令：
 
-## 四、服务管理
+```bash
+go run . version
+go run . help
+```
 
-### 子命令
+## 接口约定
 
-| 命令 | 说明 |
+### 统一响应
+
+接口通过 `pkg/response` 返回统一 JSON：
+
+```json
+{
+  "code": 0,
+  "msg": "success",
+  "data": {}
+}
+```
+
+常用业务码：
+
+| Code | 含义 |
 | --- | --- |
-| `server_api service admin` | 启动管理端 API，监听 `server.admin_addr` |
-| `server_api service api` | 启动用户端 API，监听 `server.api_addr` |
-| `server_api version` | 输出版本号 |
-| `server_api help` | 查看命令帮助 |
+| `0` | 成功 |
+| `400` | 参数错误 |
+| `401` | 未登录或登录失效 |
+| `403` | 无接口权限 |
+| `500` | 业务或服务异常 |
+| `503` | 依赖服务暂时不可用 |
 
-两个 service 子命令均支持 `-c/--config`，默认读取当前目录下的 `config.yaml`：
+### 鉴权
+
+受保护接口使用 Bearer Token：
+
+```http
+Authorization: Bearer <token>
+```
+
+- 管理端：`Auth → Permission → OperationLog`。
+- 用户端：`Auth`。
+- 超级管理员跳过接口权限匹配，但仍需有效登录态。
+- 普通管理员的接口权限来自角色绑定菜单的 `METHOD:/route` 配置。
+
+### 服务入口
+
+| 服务 | 前缀 | 默认端口 | 说明 |
+| --- | --- | --- | --- |
+| 管理端 | `/admin` | `8001` | RBAC、配置和系统管理 |
+| 用户端 | `/api` | `8002` | 用户登录、资料和上传 |
+| 本地文件 | `/files/*filepath` | 两端 | 仅本地存储渠道使用 |
+
+路由是接口事实来源，完整列表请查看 [router/admin.go](router/admin.go) 和 [router/api.go](router/api.go)。
+
+## 数据库规范
+
+- 所有表和字段必须添加数据库注释。
+- 字符字段统一使用 `utf8mb4_general_ci`。
+- 枚举值从 `1` 开始，并集中定义在 `internal/common/enums`。
+- GORM Model 必须包含 `gorm`、`json` 标签和字段注释。
+- 表关联关系定义在响应结构中，不在 Model 中耦合业务响应。
+- 能使用 GORM `Preload` 的关联查询优先使用预加载。
+- 文件业务字段只保存相对路径；`sys_upload_file` 同时保存上传时的相对路径与完整地址。
+- 结构变更通过 `sql/` 中的增量脚本交付，禁止依赖运行时自动迁移。
+
+## 代码规范
+
+- `controller` 只负责参数绑定、调用 Logic 和返回响应。
+- 业务规则、事务和上下文信息处理放在 `logic`。
+- `logic` 不直接返回 Model，必须转换为 `resp` 结构。
+- `param`、`resp` 按功能拆分文件，所有字段包含 JSON 标签和说明标签。
+- 双端共用业务能力放在 `internal/common/<feature>`。
+- 无业务归属的通用函数放在 `pkg/<feature>`。
+- 新接口必须考虑鉴权、输入校验、敏感信息脱敏和并发写入安全。
+
+## 开发与检查
 
 ```bash
-./server_api service admin -c /etc/server_api/config.yaml
+# 格式化
+go fmt ./...
+
+# 测试
+go test ./...
+
+# 静态检查
+go vet ./...
 ```
 
-### 启动自检
+请勿将临时测试文件、构建产物、日志、上传文件、真实配置或密钥提交到仓库。
 
-启动按顺序执行：
+## 部署建议
 
-1. 读取并校验 YAML 配置（`admin_addr`、`api_addr` 必填，连接池参数需合法）；
-2. 打开 MySQL 并在 5 秒内 `ping`，配置连接池（最大生命周期 30 分钟、最大空闲 5 分钟）；
-3. 创建 Redis 客户端并在 5 秒内 `PING`（失败时同时关闭已打开的 MySQL 连接）；
-4. 校验必需数据表；
-5. 校验 `sys_user` 非空；
-6. 按模式加载管理端或用户端路由并监听端口。
+- 使用反向代理终止 HTTPS，并限制上传大小和请求频率。
+- 管理端与用户端建议使用独立进程和独立域名。
+- MySQL、Redis 只允许受信网络访问。
+- 根据实际流量调整连接池和 HTTP 超时。
+- 定期备份数据库及对象存储，并验证恢复流程。
+- 生产环境接入结构化日志、指标监控和异常告警。
 
-任一步失败即中止启动并返回明确错误。
+## 参与贡献
 
-### 优雅退出
+1. Fork 仓库并从主分支创建功能分支。
+2. 保持改动范围清晰，并遵循现有目录与代码规范。
+3. 提交前运行 `gofmt`、`go test ./...` 和 `go vet ./...`。
+4. Pull Request 中说明改动目的、数据库影响、兼容性和验证结果。
 
-- 监听 `SIGINT` / `SIGTERM`；
-- 收到信号后在 `server.shutdown_timeout_seconds`（默认 15 秒）内调用 `http.Server.Shutdown`，停止接收新连接并等待在途请求完成；
-- 随后先关闭 Redis，再关闭 MySQL 连接池；
-- 超时或失败会输出「服务优雅停机失败」。
+安全漏洞请不要在公开 Issue 中披露，应通过项目维护者提供的私密渠道报告。
 
-### 进程守护示例
+## License
 
-```bash
-# nohup 后台运行
-nohup ./server_api service admin -c config.yaml >> admin.log 2>&1 &
-
-# systemd 示例
-[Unit]
-Description=server_api admin
-After=network.target mysql.service redis.service
-
-[Service]
-Type=simple
-WorkingDirectory=/opt/server_api
-ExecStart=/opt/server_api/server_api service admin -c /opt/server_api/config.yaml
-Restart=always
-RestartSec=3
-KillSignal=SIGTERM
-
-[Install]
-WantedBy=multi-user.target
-```
-
----
-
-## 五、配置说明
-
-完整模板见 `config.example.yaml`。
-
-| 配置项 | 说明 | 默认值 / 校验 |
-| --- | --- | --- |
-| `server.admin_addr` | 管理端监听地址 | 必填，如 `:8001` |
-| `server.api_addr` | 用户端监听地址 | 必填，如 `:8002` |
-| `server.read_header_timeout_seconds` | 读取请求头超时 | 缺省 5 |
-| `server.read_timeout_seconds` | 请求读取超时 | 缺省 60 |
-| `server.write_timeout_seconds` | 响应写入超时 | 缺省 60 |
-| `server.idle_timeout_seconds` | 空闲连接超时 | 缺省 120 |
-| `server.shutdown_timeout_seconds` | 优雅停机期限 | 缺省 15 |
-| `mysql.host/port/user/password/database` | MySQL 连接信息 | 必填 |
-| `mysql.max_open_conns` | 最大连接数 | 必须 > 0 |
-| `mysql.max_idle_conns` | 最大空闲连接数 | ≥ 0 且 ≤ 最大连接数 |
-| `redis.addr/password/db` | Redis 连接信息 | 密码为空表示无密码 |
-| `jwt.secret` | HS256 签名密钥 | 生产必须更换，可用 `openssl rand -hex 32` |
-| `jwt.expire_hours` | Token 与登录缓存有效期（小时） | 缺省配置 24 |
-| `jwt.issuer` | 签发方标识 | 如 `go_backend_frame` |
-| `log.level` | 日志级别 `debug/info/warn/error` | `info` |
-
-DSN 固定追加 `charset=utf8mb4&collation=utf8mb4_general_ci&parseTime=True&loc=Local`。
-
----
-
-## 六、接口一览
-
-统一响应格式由 `pkg/response` 封装，业务码：`0` 成功、`400` 参数错误、`401` 未登录、`403` 无权限、`500` 服务异常、`503` 依赖不可用（如 Redis 异常）。
-
-### 管理端（`:8001`，共 55 条）
-
-公共中间件：`gin.Logger → gin.Recovery → CORS`；受保护路由追加 `Auth → Permission → OperationLog`（部分仅 `Auth`）。
-
-| 模块 | 方法 | 路径 | 鉴权 |
-| --- | --- | --- | --- |
-| 文件访问 | GET | `/files/*filepath` | 公开 |
-| 登录 | POST | `/admin/login` | 公开 |
-| 登录会话 | POST | `/admin/logout` | 登录 |
-| 登录会话 | GET | `/admin/me` | 登录 |
-| 登录会话 | GET | `/admin/routers` | 登录 |
-| 登录会话 | GET | `/admin/permissions` | 登录 |
-| 登录会话 | POST | `/admin/profile/update` | 登录 |
-| 登录会话 | POST | `/admin/change_password` | 登录 |
-| 文件上传 | POST | `/admin/upload/file` | 登录（权限白名单） |
-| 系统总览 | GET | `/admin/dashboard/overview` | 登录 + 权限 |
-| 菜单管理 | GET | `/admin/menu/list` | 登录 + 权限 |
-| 菜单管理 | GET | `/admin/menu/tree` | 登录 + 权限 |
-| 菜单管理 | POST | `/admin/menu/add` | 登录 + 权限 |
-| 菜单管理 | POST | `/admin/menu/update` | 登录 + 权限 |
-| 菜单管理 | POST | `/admin/menu/delete` | 登录 + 权限 |
-| 角色管理 | GET | `/admin/role/list` | 登录 + 权限 |
-| 角色管理 | GET | `/admin/role/tree` | 登录 + 权限 |
-| 角色管理 | POST | `/admin/role/add` | 登录 + 权限 |
-| 角色管理 | POST | `/admin/role/update` | 登录 + 权限 |
-| 角色管理 | POST | `/admin/role/delete` | 登录 + 权限 |
-| 角色管理 | GET | `/admin/role/menus?id=` | 登录 + 权限 |
-| 角色管理 | POST | `/admin/role/assign_menus` | 登录 + 权限 |
-| 角色管理 | GET | `/admin/role/users?id=` | 登录 + 权限 |
-| 部门管理 | GET | `/admin/dept/tree` | 登录 + 权限 |
-| 部门管理 | POST | `/admin/dept/add` | 登录 + 权限 |
-| 部门管理 | POST | `/admin/dept/update` | 登录 + 权限 |
-| 部门管理 | POST | `/admin/dept/delete` | 登录 + 权限 |
-| 用户管理 | GET | `/admin/user/list` | 登录 + 权限 |
-| 用户管理 | POST | `/admin/user/add` | 登录 + 权限 |
-| 用户管理 | POST | `/admin/user/update` | 登录 + 权限 |
-| 用户管理 | POST | `/admin/user/delete` | 登录 + 权限 |
-| 用户管理 | POST | `/admin/user/reset_password` | 登录 + 权限 |
-| 用户管理 | POST | `/admin/user/kick` | 登录 + 权限 |
-| 操作日志 | GET | `/admin/log/operation/list` | 登录 + 权限 |
-| 存储渠道 | GET | `/admin/storage/list` | 登录 + 权限 |
-| 存储渠道 | POST | `/admin/storage/add` | 登录 + 权限 |
-| 存储渠道 | POST | `/admin/storage/update` | 登录 + 权限 |
-| 存储渠道 | POST | `/admin/storage/set_default` | 登录 + 权限 |
-| 存储渠道 | POST | `/admin/storage/delete` | 登录 + 权限 |
-| 短信配置 | GET | `/admin/sms/config/list` | 登录 + 权限 |
-| 短信配置 | POST | `/admin/sms/config/save` | 登录 + 权限 |
-| 短信配置 | POST | `/admin/sms/config/delete` | 登录 + 权限 |
-| 短信签名 | GET | `/admin/sms/signature/list` | 登录 + 权限 |
-| 短信签名 | POST | `/admin/sms/signature/save` | 登录 + 权限 |
-| 短信签名 | POST | `/admin/sms/signature/delete` | 登录 + 权限 |
-| 短信模板 | GET | `/admin/sms/template/list` | 登录 + 权限 |
-| 短信模板 | POST | `/admin/sms/template/save` | 登录 + 权限 |
-| 短信模板 | POST | `/admin/sms/template/delete` | 登录 + 权限 |
-| 短信记录 | GET | `/admin/sms/log/list` | 登录 + 权限 |
-| 微信配置 | GET | `/admin/wechat/config/list` | 登录 + 权限 |
-| 微信配置 | POST | `/admin/wechat/config/save` | 登录 + 权限 |
-| 微信配置 | POST | `/admin/wechat/config/delete` | 登录 + 权限 |
-| 支付配置 | GET | `/admin/payment/config/list` | 登录 + 权限 |
-| 支付配置 | POST | `/admin/payment/config/save` | 登录 + 权限 |
-| 支付配置 | POST | `/admin/payment/config/delete` | 登录 + 权限 |
-
-### 用户端（`:8002`，共 6 条）
-
-| 模块 | 方法 | 路径 | 鉴权 |
-| --- | --- | --- | --- |
-| 文件访问 | GET | `/files/*filepath` | 公开 |
-| 登录 | POST | `/api/login` | 公开 |
-| 登录会话 | POST | `/api/logout` | 登录 |
-| 用户资料 | GET | `/api/profile` | 登录 |
-| 用户资料 | POST | `/api/change_password` | 登录 |
-| 文件上传 | POST | `/api/upload/file` | 登录 |
-
-用户端不使用接口级 RBAC 与操作日志中间件，仅需通过 JWT 登录鉴权。
-
-### 中间件
-
-| 中间件 | 作用域 | 说明 |
-| --- | --- | --- |
-| `gin.Logger` / `gin.Recovery` | 两端 | 访问日志与 panic 恢复 |
-| `CORS` | 两端 | 回显 Origin，允许 `GET,POST,PUT,DELETE,PATCH,OPTIONS`，OPTIONS 返回 204 |
-| `Auth` | 两端受保护路由 | 解析 `Authorization: Bearer <token>`，校验签名与 Redis 登录态 |
-| `Permission` | 管理端 | 接口级 RBAC 校验，超级管理员放行，无权限 403、依赖异常 503 |
-| `OperationLog` | 管理端 | 记录方法、路由、参数、响应、IP、UA、耗时、操作人；对 `password/token/secret/*_key` 等字段脱敏 |
-
----
-
-## 七、鉴权与权限
-
-### JWT 主动过期
-
-1. 登录成功生成 `login_id`(UUID) 写入 `sys_user_login`，签发携带 `login_id` 的 JWT（HS256，Claims 含 `user_id/username/login_id/is_super/client/iss/exp/iat`）；
-2. 同时写入 Redis `login:<login_id>`，TTL 与 JWT 有效期一致；
-3. 每次请求解析 JWT 后检查该 Key，不存在即判定登录失效（即使 JWT 未到期）；
-4. 退出、踢人、禁用账号、改密、重置密码、删除用户时删除对应 Key，会话立即失效。
-
-### 权限模型
-
-```
-用户 ── sys_user_role ── 角色 ── sys_role_menu ── 菜单/按钮(sys_menu.api_path)
-```
-
-- 菜单类型：`1` 目录、`2` 菜单、`3` 按钮；按钮通过 `api_path` 绑定接口，格式 `METHOD:/path`（如 `POST:/admin/user/add`），支持逗号分隔多个。
-- 角色为树形结构，上级角色自动继承全部后代角色的权限。
-- 权限集合缓存于 Redis `perm:<user_id>`（TTL 24 小时，空集合用 `__none__` 占位）；菜单、角色、用户权限变更时自动清除。
-- 超级管理员（`is_super=1`）直接放行；超级管理员不可被踢下线或删除。
-
-### 初始账号
-
-| 账号 | 密码 | 说明 |
-| --- | --- | --- |
-| admin | 123456 | 超级管理员，拥有全部权限 |
-| zhangsan | 123456 | 运营专员，仅系统总览 |
-
----
-
-## 八、文件上传与存储
-
-- 单文件上限 **50MB**；上传时流式写入临时文件并计算 MD5，不会整文件载入内存。
-- 对象 Key 规则：`uploads/YYYY/MM/DD/<md5>.<ext>`；本地存储根目录 `./uploads`。
-- 存储渠道由数据库 `sys_storage_config` 动态配置（唯一默认渠道），支持 `local`、`aliyun`、`tencent`、`qiniu`、`minio`（S3 兼容）。
-- 业务字段仅保存相对路径，完整访问地址按当前默认存储配置动态生成；`sys_upload_file` 作为上传档案表，同时保存相对路径与上传时的完整地址快照。
-- 远程文件抓取仅允许 HTTP(S)，限制超时并拒绝内网、回环、链路本地与保留地址，防止 SSRF。
-
----
-
-## 九、运维与安全建议
-
-- `config.yaml` 含数据库密码与 JWT 密钥，请勿提交；使用 `config.example.yaml` 作为模板，并确保 `jwt.secret` 在生产环境替换为随机值。
-- 前端需配置代理：管理端 `/admin` → `http://127.0.0.1:8001`，用户端 `/api` → `http://127.0.0.1:8002`。
-- Redis 不可用时，管理端接口返回 503 而非 403，避免把依赖故障误报为无权限。
-- 数据库不使用 AutoMigrate，表结构变更请通过 `sql/` 下的升级脚本执行。
-- 生产环境建议在反向代理后运行，并仅暴露必要的 `/files/*filepath` 静态访问路径。
+本项目基于 [Apache License 2.0](LICENSE) 开源。
