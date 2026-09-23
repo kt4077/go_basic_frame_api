@@ -20,6 +20,7 @@
 - 内置短信、微信、支付、存储和平台基础配置模块。
 - 服务启动自检、HTTP 超时控制和优雅停机。
 - 数据库统一使用 `utf8mb4_general_ci`。
+- 配套管理端 OpenAPI 文档、前后端代码规范和可直接复用的代码规范 Skill。
 
 ## 技术栈
 
@@ -61,6 +62,12 @@ server_api/
 ├── router/                    # admin/api 路由入口
 ├── sql/                       # 数据库增量脚本
 ├── uploads/                   # 本地上传目录，不提交到仓库
+├── docs/                      # 项目文档
+│   ├── admin_openapi.yaml     # 管理端 OpenAPI 3.0 文档，可直接导入 Apifox
+│   ├── CODE_STYLE.md          # 前后端完整代码规范
+│   └── code-standards/        # 代码规范 Skill，供 AI 编码助手复用
+│       ├── SKILL.md           # Skill 入口：场景判断、落地顺序、速查规则
+│       └── references/        # backend-go.md / frontend-vue.md 细则与模板
 ├── config.example.yaml        # 配置模板
 ├── go.mod
 └── main.go
@@ -196,6 +203,8 @@ Authorization: Bearer <token>
 
 路由是接口事实来源，完整列表请查看 [router/admin.go](router/admin.go) 和 [router/api.go](router/api.go)。
 
+管理端接口同时维护了一份 OpenAPI 3.0 文档：[docs/admin_openapi.yaml](docs/admin_openapi.yaml)。可直接在 Apifox / Postman / Swagger UI 中导入，导入后把 `servers.url` 改为实际访问地址即可调试。
+
 ## 数据库规范
 
 - 所有表和字段必须添加数据库注释。
@@ -209,13 +218,41 @@ Authorization: Bearer <token>
 
 ## 代码规范
 
+完整规范见 [docs/CODE_STYLE.md](docs/CODE_STYLE.md)，覆盖后端 Go 与前端 Vue/TypeScript 的目录结构、分层职责、命名风格、代码模板与提交检查清单。
+
+核心约定：
+
 - `controller` 只负责参数绑定、调用 Logic 和返回响应。
-- 业务规则、事务和上下文信息处理放在 `logic`。
+- 业务规则、事务和上下文信息处理放在 `logic`，`logic` 方法统一接收 `*gin.Context`。
 - `logic` 不直接返回 Model，必须转换为 `resp` 结构。
-- `param`、`resp` 按功能拆分文件，所有字段包含 JSON 标签和说明标签。
+- `param`、`resp` 按功能拆分文件，禁止合并为单一 `param.go`/`resp.go`。
 - 双端共用业务能力放在 `internal/common/<feature>`。
 - 无业务归属的通用函数放在 `pkg/<feature>`。
+- 响应一律通过 `pkg/response` 的 `OK/Fail` 输出，HTTP 状态码为 200，业务码区分错误类型。
 - 新接口必须考虑鉴权、输入校验、敏感信息脱敏和并发写入安全。
+- 数据库禁止 `AutoMigrate`，结构变更通过 `sql/` 增量脚本交付。
+- 接口变更后同步更新 `docs/admin_openapi.yaml`；新增配置项同步 `config/config.go`、`config.example.yaml` 与本文配置表。
+
+### 代码规范 Skill
+
+[docs/code-standards](docs/code-standards) 是同一套规范的 AI 编码助手版本，用于在新增或修改代码时自动按项目约定落地：
+
+```text
+docs/code-standards/
+├── SKILL.md                   # 场景判断、后端/前端改动顺序、速查规则表
+└── references/
+    ├── backend-go.md          # 后端分层职责、代码模板、常见禁止事项
+    └── frontend-vue.md        # 前端类型/接口/页面模板、样式与提交检查
+```
+
+在 CodeBuddy / Claude Code 等支持 Skill 的工具中使用：
+
+```bash
+mkdir -p .codebuddy/skills
+cp -r docs/code-standards .codebuddy/skills/go-frame-code-standards
+```
+
+复制后，在仓库内编写、修改或评审 `server_api` 与 `admin_client` 代码时会自动加载该规范；也可在提示中显式提及 `go-frame-code-standards`。规范更新请同时修改 `docs/CODE_STYLE.md` 与 `docs/code-standards/`，保持两份一致。
 
 ## 开发与检查
 
@@ -244,7 +281,7 @@ go vet ./...
 ## 参与贡献
 
 1. Fork 仓库并从主分支创建功能分支。
-2. 保持改动范围清晰，并遵循现有目录与代码规范。
+2. 保持改动范围清晰，并遵循 [docs/CODE_STYLE.md](docs/CODE_STYLE.md) 中的目录与代码规范（推荐使用 [代码规范 Skill](docs/code-standards) 辅助落地）。
 3. 提交前运行 `gofmt`、`go test ./...` 和 `go vet ./...`。
 4. Pull Request 中说明改动目的、数据库影响、兼容性和验证结果。
 
