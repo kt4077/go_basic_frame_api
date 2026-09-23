@@ -4,9 +4,9 @@
 
 > 当前项目仍在持续完善中，欢迎通过 Issue 或 Pull Request 提交问题与改进建议。
 
-| 官网地址 | 管理端地址 | 接口端地址 |
-| --- | --- | --- |
-| [访问官网](https://www.tutudati.com/) | [管理端源码](https://gitee.com/open-source-project-open/go_basic_frame_admin) | [接口端源码](https://gitee.com/open-source-project-open/go_basic_frame_api) |
+| 官网地址 | 管理端地址 | 接口端地址 | 接口文档 |
+| --- | --- | --- | --- |
+| [访问官网](https://www.tutudati.com/) | [管理端源码](https://gitee.com/open-source-project-open/go_basic_frame_admin) | [接口端源码](https://gitee.com/open-source-project-open/go_basic_frame_api) | [接口文档](https://s.apifox.cn/a42d392b-c5e9-4b75-8f54-e1c26339b262) |
 
 ## 特性
 
