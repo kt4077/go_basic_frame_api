@@ -32,11 +32,13 @@ func AdminRoutes(application *app.App) *gin.Engine {
 	smsC := &controller.SMSController{Logic: &logic.SMSLogic{App: application}}
 	wechatC := &controller.WechatController{Logic: &logic.WechatLogic{App: application}}
 	paymentC := &controller.PaymentController{Logic: &logic.PaymentLogic{App: application}}
+	platformC := &controller.PlatformController{Logic: &logic.PlatformLogic{App: application}}
 
 	// 无需登录
 	pub := r.Group("/admin")
 	{
 		pub.POST("/login", authC.Login)
+		pub.GET("/platform/public", platformC.AdminDetail)
 	}
 
 	// 需登录
@@ -45,6 +47,7 @@ func AdminRoutes(application *app.App) *gin.Engine {
 		auth.POST("/logout", authC.Logout)
 		auth.GET("/me", authC.Me)
 		auth.POST("/profile/update", authC.UpdateProfile)
+		auth.POST("/profile/avatar", authC.UpdateAvatar)
 		auth.GET("/routers", authC.GetRouters)
 		auth.GET("/permissions", authC.Permissions)
 		auth.POST("/change_password", authC.ChangePassword)
@@ -113,6 +116,12 @@ func AdminRoutes(application *app.App) *gin.Engine {
 		perm.GET("/payment/config/list", paymentC.List)
 		perm.POST("/payment/config/save", paymentC.Save)
 		perm.POST("/payment/config/delete", paymentC.Delete)
+
+		// 平台配置：管理端与用户端权限相互隔离
+		perm.GET("/platform/admin/detail", platformC.AdminDetail)
+		perm.POST("/platform/admin/save", platformC.SaveAdmin)
+		perm.GET("/platform/user/detail", platformC.UserDetail)
+		perm.POST("/platform/user/save", platformC.SaveUser)
 
 		// 部门管理
 		perm.GET("/dept/tree", deptC.Tree)

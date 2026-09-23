@@ -96,6 +96,7 @@ func (a *App) CheckTables() error {
 		"sys_operation_log", "sys_storage_config", "sys_upload_file",
 		"sys_sms_config", "sys_sms_signature", "sys_sms_template", "sys_sms_send_log",
 		"sys_wechat_config", "sys_payment_config",
+		"sys_platform_config",
 	}
 	var missing []string
 	for _, table := range required {

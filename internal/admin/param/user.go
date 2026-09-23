@@ -30,6 +30,11 @@ type ProfileUpdateReq struct {
 	Email    string `json:"email" binding:"omitempty,email,max=64" comment:"邮箱"`
 }
 
+// AvatarUpdateReq 当前管理员头像更新参数。
+type AvatarUpdateReq struct {
+	Avatar string `json:"avatar" binding:"required,max=1024" comment:"头像相对路径"`
+}
+
 type ResetPasswordReq struct {
 	ID       uint   `json:"id" binding:"required" comment:"用户ID"`
 	Password string `json:"password" binding:"required,min=6" comment:"新密码"`

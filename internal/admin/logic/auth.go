@@ -92,6 +92,26 @@ func (l *AuthLogic) UpdateProfile(c *gin.Context, req *param.ProfileUpdateReq) (
 	return loadUserItem(l.App, claims.UserID)
 }
 
+// UpdateAvatar 单独修改当前管理员头像，不影响尚未保存的其他个人资料。
+func (l *AuthLogic) UpdateAvatar(c *gin.Context, req *param.AvatarUpdateReq) (*resp.UserItem, error) {
+	avatar, err := normalizeFilePath(l.App, req.Avatar)
+	if err != nil {
+		return nil, err
+	}
+	claims := auth.CtxClaims(c)
+	result := l.App.DB.Model(&model.SysUser{}).Where("id = ?", claims.UserID).Update("avatar", avatar)
+	if result.Error != nil {
+		return nil, errors.New("头像保存失败")
+	}
+	if result.RowsAffected == 0 {
+		var count int64
+		if err := l.App.DB.Model(&model.SysUser{}).Where("id = ?", claims.UserID).Count(&count).Error; err != nil || count == 0 {
+			return nil, errors.New("用户不存在")
+		}
+	}
+	return loadUserItem(l.App, claims.UserID)
+}
+
 // GetRouters 返回当前用户的菜单树（目录+菜单，不含按钮），用于渲染左侧导航。
 func (l *AuthLogic) GetRouters(c *gin.Context) ([]*tree.TreeItem[resp.MenuItem], error) {
 	claims := auth.CtxClaims(c)

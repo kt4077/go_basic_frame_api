@@ -60,6 +60,21 @@ func (h *AuthController) UpdateProfile(c *gin.Context) {
 	response.OK(c, res)
 }
 
+// UpdateAvatar 修改当前管理员头像。
+func (h *AuthController) UpdateAvatar(c *gin.Context) {
+	var req param.AvatarUpdateReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, response.CodeErrParams, "头像参数错误")
+		return
+	}
+	res, err := h.Logic.UpdateAvatar(c, &req)
+	if err != nil {
+		response.Fail(c, response.CodeErrBusiness, err.Error())
+		return
+	}
+	response.OK(c, res)
+}
+
 // GetRouters 当前用户的菜单树。
 func (h *AuthController) GetRouters(c *gin.Context) {
 	res, err := h.Logic.GetRouters(c)
