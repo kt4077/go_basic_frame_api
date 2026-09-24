@@ -16,6 +16,8 @@ import (
 
 	"server_api/config"
 	commonapp "server_api/internal/common/app"
+	commonplugin "server_api/internal/common/plugin"
+	"server_api/internal/plugins"
 	"server_api/router"
 )
 
@@ -75,7 +77,7 @@ func versionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "查看版本",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("server_api v1.0.0")
+			fmt.Println("server_api v0.0.2")
 		},
 	}
 }
@@ -99,18 +101,45 @@ func serve(cfgPath, mode string) error {
 		return err
 	}
 
+	pluginRegistry := commonplugin.NewRegistry(app)
+	if err := plugins.RegisterBuiltins(pluginRegistry); err != nil {
+		return fmt.Errorf("注册内置插件失败: %w", err)
+	}
+	if err := pluginRegistry.Prepare(context.Background()); err != nil {
+		return fmt.Errorf("插件检查失败: %w", err)
+	}
+
 	addr := cfg.Server.ApiAddr
-	handler := http.Handler(router.ApiRoutes(app))
+	serviceType := commonplugin.ServiceAPI
+	engine, err := router.ApiRoutes(app, pluginRegistry)
 	serviceName := "用户端 API"
 	if mode == "admin" {
 		addr = cfg.Server.AdminAddr
-		handler = router.AdminRoutes(app)
+		serviceType = commonplugin.ServiceAdmin
+		engine, err = router.AdminRoutes(app, pluginRegistry)
 		serviceName = "管理端 API"
 	}
+	if err != nil {
+		return fmt.Errorf("注册%s路由失败: %w", serviceName, err)
+	}
+
+	pluginCtx, pluginCancel := context.WithCancel(context.Background())
+	if err := pluginRegistry.Start(pluginCtx, serviceType); err != nil {
+		pluginCancel()
+		return err
+	}
+	defer func() {
+		pluginCancel()
+		stopCtx, stopCancel := context.WithTimeout(context.Background(), time.Duration(cfg.Server.ShutdownTimeout)*time.Second)
+		defer stopCancel()
+		if err := pluginRegistry.Stop(stopCtx); err != nil {
+			log.Printf("停止插件失败: %v", err)
+		}
+	}()
 
 	server := &http.Server{
 		Addr:              addr,
-		Handler:           handler,
+		Handler:           http.Handler(engine),
 		ReadHeaderTimeout: time.Duration(cfg.Server.ReadHeaderTimeout) * time.Second,
 		ReadTimeout:       time.Duration(cfg.Server.ReadTimeout) * time.Second,
 		WriteTimeout:      time.Duration(cfg.Server.WriteTimeout) * time.Second,

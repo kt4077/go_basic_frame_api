@@ -71,6 +71,8 @@ tags:
     description: 通用文件上传（multipart，字段名 file，单文件最大 50MB）
   - name: 操作日志
     description: 管理端操作日志分页查询
+  - name: 插件管理
+    description: 已安装插件、编译状态、迁移记录和启停状态管理
   - name: 存储渠道
     description: 对象存储渠道配置（本地/阿里云OSS/腾讯云COS/七牛云/MinIO）
   - name: 短信配置
@@ -1017,6 +1019,104 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/OperationLogListRes'
+
+  ########################## 插件管理 ##########################
+  /admin/plugin/list:
+    get:
+      tags: [插件管理]
+      summary: 插件分页列表
+      operationId: adminPluginList
+      parameters:
+        - name: keyword
+          in: query
+          description: 插件名称或标识关键字
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: 插件状态 1启用 2停用
+          schema:
+            type: integer
+            enum: [1, 2]
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/PageSizeQuery'
+      responses:
+        '200':
+          description: 插件列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PluginListRes'
+
+  /admin/plugin/detail:
+    get:
+      tags: [插件管理]
+      summary: 插件详情及迁移记录
+      operationId: adminPluginDetail
+      parameters:
+        - name: plugin_id
+          in: query
+          required: true
+          description: 插件唯一标识
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 插件详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PluginDetail'
+
+  /admin/plugin/status:
+    post:
+      tags: [插件管理]
+      summary: 修改插件启停状态
+      description: 修改数据库状态，管理端 API 和用户端 API 重启后生效。启用前校验编译版本、迁移及依赖，停用前校验反向依赖。
+      operationId: adminPluginUpdateStatus
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PluginStatusReq'
+      responses:
+        '200':
+          description: 修改成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+  /admin/plugin/info:
+    post:
+      tags: [插件管理]
+      summary: 修改插件展示信息
+      description: 只维护插件作者、插件主页和描述，不修改插件标识、版本及运行清单。
+      operationId: adminPluginUpdateInfo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PluginInfoUpdateReq'
+      responses:
+        '200':
+          description: 修改成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
 
   ########################## 存储渠道 ##########################
   /admin/storage/list:
@@ -1972,6 +2072,101 @@ components:
           items:
             $ref: '#/components/schemas/DeptTreeItem'
 
+    PluginItem:
+      allOf:
+        - $ref: '#/components/schemas/BaseItem'
+        - type: object
+          properties:
+            plugin_id:
+              type: string
+              description: 插件唯一标识
+            name:
+              type: string
+              description: 插件名称
+            version:
+              type: string
+              description: 数据库安装版本
+            code_version:
+              type: string
+              description: 当前程序编译版本，未编译时为空
+            logo:
+              type: string
+              description: 插件Logo相对路径
+            logo_url:
+              type: string
+              description: 根据当前存储配置补全的插件Logo访问地址
+            author:
+              type: string
+              description: 插件作者
+            homepage:
+              type: string
+              format: uri
+              description: 插件主页地址
+            description:
+              type: string
+              description: 插件描述
+            status:
+              type: integer
+              description: 插件状态 1启用 2停用
+              enum: [1, 2]
+            compiled:
+              type: boolean
+              description: 是否编译进当前程序
+
+    PluginMigrationItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: 主键ID
+        version:
+          type: string
+          description: 迁移版本
+        checksum:
+          type: string
+          description: 迁移内容SHA256摘要
+        status:
+          type: integer
+          description: 迁移状态 1成功 2失败
+          enum: [1, 2]
+        execution_ms:
+          type: integer
+          format: int64
+          description: 执行耗时毫秒
+        error_message:
+          type: string
+          description: 失败原因
+        executed_at:
+          type: string
+          format: date-time
+          description: 执行时间
+
+    PluginDetail:
+      allOf:
+        - $ref: '#/components/schemas/PluginItem'
+        - type: object
+          properties:
+            manifest:
+              type: string
+              description: 安装时插件清单JSON快照
+            migrations:
+              type: array
+              description: 数据库迁移记录
+              items:
+                $ref: '#/components/schemas/PluginMigrationItem'
+
+    PluginListRes:
+      type: object
+      properties:
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/PluginItem'
+        total:
+          type: integer
+          format: int64
+          description: 数据总数
+
     StorageItem:
       allOf:
         - $ref: '#/components/schemas/BaseItem'
@@ -2641,6 +2836,43 @@ components:
           type: string
           description: 备注
       required: [name]
+
+    PluginStatusReq:
+      type: object
+      properties:
+        plugin_id:
+          type: string
+          description: 插件唯一标识
+        status:
+          type: integer
+          description: 插件状态 1启用 2停用
+          enum: [1, 2]
+      required: [plugin_id, status]
+
+    PluginInfoUpdateReq:
+      type: object
+      properties:
+        plugin_id:
+          type: string
+          description: 插件唯一标识
+        logo:
+          type: string
+          maxLength: 1000
+          description: 插件Logo相对路径，也兼容当前存储域名下的完整地址
+        author:
+          type: string
+          maxLength: 100
+          description: 插件作者
+        homepage:
+          type: string
+          format: uri
+          maxLength: 500
+          description: 插件主页地址
+        description:
+          type: string
+          maxLength: 2000
+          description: 插件描述
+      required: [plugin_id]
 
     StorageSaveReq:
       type: object

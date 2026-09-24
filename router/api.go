@@ -8,11 +8,12 @@ import (
 	apilogic "server_api/internal/api/logic"
 	"server_api/internal/common/app"
 	commonmiddleware "server_api/internal/common/middleware"
+	commonplugin "server_api/internal/common/plugin"
 	commonupload "server_api/internal/common/upload"
 )
 
 // ApiRoutes 用户端路由。
-func ApiRoutes(application *app.App) *gin.Engine {
+func ApiRoutes(application *app.App, pluginRegistry *commonplugin.Registry) (*gin.Engine, error) {
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery(), commonmiddleware.CORS())
 	r.GET("/files/*filepath", func(c *gin.Context) { commonupload.ServeLocalFile(application, c) })
@@ -34,5 +35,9 @@ func ApiRoutes(application *app.App) *gin.Engine {
 		auth.GET("/profile", authC.Profile)
 		auth.POST("/change_password", authC.ChangePassword)
 	}
-	return r
+
+	if err := pluginRegistry.RegisterAPIRoutes(commonplugin.APIRouteGroups{Public: pub, Auth: auth}); err != nil {
+		return nil, err
+	}
+	return r, nil
 }

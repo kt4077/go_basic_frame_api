@@ -11,11 +11,12 @@ import (
 	adminmiddleware "server_api/internal/admin/middleware"
 	"server_api/internal/common/app"
 	commonmiddleware "server_api/internal/common/middleware"
+	commonplugin "server_api/internal/common/plugin"
 	commonupload "server_api/internal/common/upload"
 )
 
 // AdminRoutes 管理端路由。
-func AdminRoutes(application *app.App) *gin.Engine {
+func AdminRoutes(application *app.App, pluginRegistry *commonplugin.Registry) (*gin.Engine, error) {
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery(), commonmiddleware.CORS())
 	r.GET("/files/*filepath", func(c *gin.Context) { commonupload.ServeLocalFile(application, c) })
@@ -33,6 +34,7 @@ func AdminRoutes(application *app.App) *gin.Engine {
 	wechatC := &controller.WechatController{Logic: &logic.WechatLogic{App: application}}
 	paymentC := &controller.PaymentController{Logic: &logic.PaymentLogic{App: application}}
 	platformC := &controller.PlatformController{Logic: &logic.PlatformLogic{App: application}}
+	pluginC := &controller.PluginController{Logic: &logic.PluginLogic{App: application, Registry: pluginRegistry}}
 
 	// 无需登录
 	pub := r.Group("/admin")
@@ -128,6 +130,18 @@ func AdminRoutes(application *app.App) *gin.Engine {
 		perm.POST("/dept/add", deptC.Create)
 		perm.POST("/dept/update", deptC.Update)
 		perm.POST("/dept/delete", deptC.Delete)
+
+		// 插件管理：状态修改后在服务重启时生效
+		perm.GET("/plugin/list", pluginC.List)
+		perm.GET("/plugin/detail", pluginC.Detail)
+		perm.POST("/plugin/info", pluginC.UpdateInfo)
+		perm.POST("/plugin/status", pluginC.UpdateStatus)
 	}
-	return r
+
+	if err := pluginRegistry.RegisterAdminRoutes(commonplugin.AdminRouteGroups{
+		Public: pub, Auth: auth, Permission: perm,
+	}); err != nil {
+		return nil, err
+	}
+	return r, nil
 }
