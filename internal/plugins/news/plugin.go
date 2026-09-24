@@ -24,7 +24,7 @@ func New() *Plugin { return &Plugin{} }
 
 // Manifest 返回插件元信息。
 func (p *Plugin) Manifest() commonplugin.Manifest {
-	return commonplugin.Manifest{PluginID: "news", Name: "新闻资讯", Version: "1.1.3", Logo: "", Author: "kt4077", Homepage: "https://github.com/kt4077/go_basic_frame_plugin_news", Description: "提供新闻分类、文章草稿、发布下线、封面管理以及用户端新闻查询能力。", CoreVersion: commonplugin.CoreVersion, Dependencies: []commonplugin.Dependency{}}
+	return commonplugin.Manifest{PluginID: "news", Name: "新闻资讯", Version: "1.1.4", Logo: "", Author: "kt4077", Homepage: "https://github.com/kt4077/go_basic_frame_plugin_news", Description: "提供新闻分类、文章草稿、发布下线、封面管理以及用户端新闻查询能力。", CoreVersion: commonplugin.CoreVersion, Dependencies: []commonplugin.Dependency{}}
 }
 
 // Migrations 返回插件迁移声明。
