@@ -192,6 +192,14 @@ func validatePackage(root string, manifest *PackageManifest) error {
 	if _, err := os.Stat(filepath.Join(serverDir, "plugin.go")); err != nil {
 		return errors.New("插件包缺少后端plugin.go")
 	}
+	apiDocumentPath := filepath.Join(root, "docs", "API.md")
+	apiDocumentInfo, err := os.Stat(apiDocumentPath)
+	if err != nil || apiDocumentInfo.IsDir() {
+		return errors.New("插件包缺少docs/API.md接口文档")
+	}
+	if apiDocumentInfo.Size() == 0 {
+		return errors.New("插件包docs/API.md接口文档不能为空")
+	}
 	seenMenus := make(map[string]struct{}, len(manifest.Menus))
 	for _, menu := range manifest.Menus {
 		if !keyPattern.MatchString(menu.Key) {

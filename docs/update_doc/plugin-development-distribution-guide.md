@@ -49,6 +49,8 @@ git push origin v0.0.2
 news-plugin/
 ├── plugin.json
 ├── README.md
+├── docs/
+│   └── API.md
 ├── CHANGELOG.md
 ├── LICENSE
 ├── server_api/
@@ -76,6 +78,8 @@ v1.1.0
 news-v1.0.0/
 ├── plugin.json
 ├── README.md
+├── docs/
+│   └── API.md
 ├── CHANGELOG.md
 ├── LICENSE
 ├── server_api/
@@ -107,6 +111,7 @@ news-v1.0.0/
 - 安装器不会接收插件提供的完整 `register.go`；
 - 安装器不会执行插件提供的菜单 INSERT SQL；
 - 插件包不得包含配置文件、密钥、证书、构建缓存、`node_modules` 或 `dist`。
+- 插件包必须包含非空且可离线阅读的 `docs/API.md`，并覆盖发行版本提供的全部管理端、用户端和回调接口；安装器会强制检查该文件。
 
 `logo` 是当前存储渠道中的相对路径，不是插件包内静态文件路径。如果安装环境没有预先上传对应文件，应在清单中留空，安装后通过插件管理页面上传 Logo。
 
@@ -498,12 +503,14 @@ go run . plugin generate --server-root .
 - [ ] 插件 ID、版本、核心版本和依赖正确。
 - [ ] 后端 `New()` 和 Manifest 正确。
 - [ ] 管理端页面位于标准插件目录。
+- [ ] 列表页与新增/修改表单组件已拆分，表单交互没有堆放在列表页中。
 - [ ] 菜单只使用 `key`、`parent_key`，没有数据库 ID。
 - [ ] 页面路径位于 `/plugin/{plugin_id}/`。
 - [ ] 迁移只操作 `plg_{plugin_id}_*` 表。
 - [ ] 迁移没有 `DROP`、`DELETE`、核心表或其他插件表操作。
 - [ ] 迁移 SHA256 与清单及代码一致。
 - [ ] ZIP 不包含配置、密钥、证书和构建缓存。
+- [ ] `docs/API.md` 已包含在仓库和 ZIP 中，覆盖全部实际路由、鉴权、参数、响应、错误场景及版本变更。
 - [ ] `plugin validate` 通过。
 - [ ] 后端测试、Vet、构建通过。
 - [ ] 管理端类型检查、生产构建通过。
