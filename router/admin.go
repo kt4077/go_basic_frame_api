@@ -91,6 +91,8 @@ func AdminRoutes(application *app.App, pluginRegistry *commonplugin.Registry) (*
 
 		// 日志维护
 		perm.GET("/log/operation/list", logC.List)
+		perm.POST("/log/operation/delete", logC.Delete)
+		perm.POST("/log/operation/clear", logC.Clear)
 
 		// 存储渠道配置
 		perm.GET("/storage/list", storageC.List)
