@@ -54,6 +54,7 @@ BaseEntity       // { id, created_at, updated_at }
 - 禁止 `any`，不确定用 `unknown`。
 - 列表查询参数继承 `PageQuery`；列表响应用 `PageResult<T>`；实体继承 `BaseEntity`。
 - 后端树为 `{ data, children }`，组件需要平铺时写转换函数并注释原因。
+- 富文本编辑统一复用 `src/components/RichTextEditor.vue`，业务页面和插件只绑定内容与提示配置，不重复维护 WangEditor 上传、主题或销毁逻辑。
 
 ## 枚举
 

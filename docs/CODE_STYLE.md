@@ -203,6 +203,7 @@ export const getUserList = (params?: Partial<UserListReq>) => {
 
 - 按钮级权限使用指令：`v-perm="'POST:/admin/user/add'"`。
 - 上传使用通用上传组件；提交业务数据时传 `relative_path`，不要把访问域名写进业务字段。
+- 富文本编辑统一复用管理端 `src/components/RichTextEditor.vue`，不得在业务模块或插件中重复封装 WangEditor；上传、明暗主题和销毁生命周期由通用组件维护。
 
 ### 3.7 提交前检查
 
