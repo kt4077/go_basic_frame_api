@@ -1,5 +1,6 @@
 -- v0.0.2 插件化基础设施升级脚本
 -- 执行前请备份数据库；本脚本只新增核心表，不修改现有业务数据。
+-- 如果执行了cf_backend_frame.sql，请跳过此脚本。
 
 SET NAMES utf8mb4 COLLATE utf8mb4_general_ci;
 
