@@ -80,6 +80,30 @@ CREATE TABLE IF NOT EXISTS `sys_plugin_migration` (
   KEY `idx_plugin_migration_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='插件数据库迁移记录表';
 
+CREATE TABLE IF NOT EXISTS `sys_plugin_menu` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `plugin_id` varchar(64) COLLATE utf8mb4_general_ci NOT NULL COMMENT '插件唯一标识',
+  `menu_key` varchar(64) COLLATE utf8mb4_general_ci NOT NULL COMMENT '插件内菜单业务键',
+  `menu_id` bigint unsigned NOT NULL COMMENT '系统菜单ID',
+  `parent_key` varchar(64) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '插件内父级菜单业务键',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_plugin_menu_key` (`plugin_id`, `menu_key`),
+  UNIQUE KEY `uk_plugin_menu_id` (`menu_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='插件菜单业务键映射表';
+
+CREATE TABLE IF NOT EXISTS `sys_plugin_install_log` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `created_at` datetime(3) NOT NULL COMMENT '创建时间',
+  `plugin_id` varchar(64) COLLATE utf8mb4_general_ci NOT NULL COMMENT '插件唯一标识',
+  `version` varchar(32) COLLATE utf8mb4_general_ci NOT NULL COMMENT '目标版本',
+  `action` tinyint unsigned NOT NULL COMMENT '操作类型，1安装，2升级',
+  `status` tinyint unsigned NOT NULL COMMENT '执行状态，1成功，2失败',
+  `package_hash` varchar(64) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '发行包SHA256',
+  `error_message` varchar(1000) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '失败原因',
+  PRIMARY KEY (`id`),
+  KEY `idx_plugin_install_log_plugin_id` (`plugin_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='插件安装升级日志表';
+
 -- 插件管理菜单。使用路径和接口权限判断是否存在，脚本可重复执行。
 SET @plugin_menu_parent_id := (
   SELECT `id` FROM `sys_menu`

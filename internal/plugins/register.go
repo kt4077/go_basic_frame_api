@@ -7,8 +7,7 @@ import commonplugin "server_api/internal/common/plugin"
 // RegisterBuiltins 注册编译进程序的插件。当前版本只提供基础设施，
 // 后续商城、新闻等插件在此加入，核心业务模块不需要迁移到本目录。
 func RegisterBuiltins(registry *commonplugin.Registry) error {
-	builtins := []commonplugin.Plugin{}
-	for _, item := range builtins {
+	for _, item := range generatedBuiltins() {
 		if err := registry.Register(item); err != nil {
 			return err
 		}

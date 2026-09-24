@@ -27,7 +27,7 @@ func RootCmd() *cobra.Command {
 		Use:   "server_api",
 		Short: "Go 后端基础框架服务",
 	}
-	root.AddCommand(serviceCmd(), versionCmd())
+	root.AddCommand(serviceCmd(), versionCmd(), pluginCmd())
 	return root
 }
 

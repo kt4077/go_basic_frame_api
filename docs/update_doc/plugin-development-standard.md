@@ -111,20 +111,16 @@ src/plugins/{plugin_id}/views/{view_path}/index.vue
 
 ### 3.3 SQL 目录
 
-每个插件使用独立版本目录：
+发行包中的迁移使用独立目录：
 
 ```text
-server_api/sql/plugins/{plugin_id}/
-├── v1.0.0/
-│   ├── migration.sql
-│   ├── register.sql
-│   └── uninstall.sql
-└── v1.1.0/
-    ├── migration.sql
-    └── register.sql
+database/
+└── migrations/
+    ├── v1.0.0.sql
+    └── v1.1.0.sql
 ```
 
-`migration.sql` 只包含业务结构和数据迁移，`register.sql` 负责登记迁移摘要及插件信息，避免迁移文件包含自身摘要形成循环。`uninstall.sql` 只作为人工卸载参考，不允许应用程序自动执行。涉及删除表、字段或数据的语句必须带有醒目的危险操作说明。
+迁移只包含当前插件业务结构和数据。插件信息、迁移记录和菜单由安装器根据 `plugin.json` 写入，插件不得直接修改核心表。安装后迁移文件保存到 `server_api/sql/plugins/{plugin_id}/{version}`。
 
 ## 4. 插件清单和契约
 
@@ -205,15 +201,13 @@ func (p *Plugin) Stop(ctx context.Context) error {
 - 当前依赖版本使用精确匹配，不支持 `>=1.0.0` 等范围表达式；
 - 禁止形成循环依赖。
 
-插件必须在 `internal/plugins/register.go` 显式注册：
+插件必须导出 `New()`。安装器扫描插件目录并自动生成静态注册文件：
 
 ```go
-builtins := []commonplugin.Plugin{
-    news.New(),
-}
+go run . plugin generate --server-root .
 ```
 
-数据库启用但没有编译进程序的插件会导致服务拒绝启动，这是防止未知代码和不完整发布的安全保护。
+生成结果为 `internal/plugins/register_gen.go`，禁止手工编辑。数据库启用但没有编译进程序的插件会导致服务拒绝启动。
 
 ## 5. 数据库规范
 
@@ -286,11 +280,11 @@ Model 只映射当前表字段，不定义分类、作者等关联对象。关�
 
 ### 5.4 迁移记录
 
-1. 执行插件 SQL。
-2. 计算 SQL 文件 SHA256 摘要。
-3. 向 `sys_plugin_migration` 写入状态为 `1` 的成功记录。
-4. `Migrations()` 中填写相同版本和摘要。
-5. 安装或升级全部完成后，再更新 `sys_plugin.version`。
+1. 计算迁移 SQL 的 SHA256 摘要。
+2. 在 `plugin.json` 和 `Migrations()` 中填写相同版本与摘要。
+3. 通过 `plugin install/upgrade --apply-database` 执行迁移。
+4. 安装器写入状态为 `1` 的 `sys_plugin_migration` 记录。
+5. 安装器在迁移和菜单成功后写入或更新 `sys_plugin.version`。
 
 迁移失败时必须记录状态 `2` 和错误原因，不得把未完成的迁移标记为成功。修改已经发布的 SQL 会造成摘要不一致；已发布迁移不得修改，只能新增更高版本迁移。
 
@@ -390,12 +384,12 @@ func (p *Plugin) RegisterAdminRoutes(
 
 ### 7.3 菜单和权限
 
-- 菜单、按钮和接口权限 SQL 与插件安装 SQL 一起交付；
+- 菜单、按钮和接口权限在 `plugin.json.menus` 中交付，不编写 `sys_menu` INSERT SQL；
 - 页面路径使用 `/plugin/{plugin_id}/{view_path}`；
 - API 权限标识必须与实际请求方法和路径一致；
 - 普通角色默认不自动获得新插件权限；
 - 超级管理员和普通管理员的行为沿用现有权限体系；
-- 菜单 ID、父子关系和唯一索引必须在目标数据库中确认，禁止复制固定 ID 后直接覆盖现有菜单；
+- 菜单只使用 `key` 和 `parent_key` 描述层级，真实 ID 由数据库生成并记录在 `sys_plugin_menu`；
 - 权限变更后按现有机制清理缓存或重新登录验证。
 
 ## 8. 前端开发规范
@@ -454,10 +448,10 @@ func (p *Plugin) RegisterAdminRoutes(
 
 1. 审查插件源码和依赖。
 2. 备份数据库及当前构建产物。
-3. 依次执行插件 `migration.sql` 和 `register.sql`。
-4. 写入成功迁移记录和停用状态的 `sys_plugin` 记录。
-5. 将插件后端加入 `RegisterBuiltins`。
-6. 将管理端插件页面加入源码并完成构建。
+3. 使用 `plugin install --apply-database` 安装前后端源码、执行受限迁移并登记插件信息。
+4. 检查自动生成的 `register_gen.go`。
+5. 完成后端和管理端检查及构建。
+6. 检查插件、迁移、菜单映射和安装日志。
 7. 在测试环境启动并验证。
 8. 更新 `sys_plugin.status = 1`。
 9. 重启管理端 API 和用户端 API。
@@ -466,7 +460,7 @@ func (p *Plugin) RegisterAdminRoutes(
 ### 12.2 升级
 
 1. 禁止修改历史迁移文件。
-2. 新增版本目录和 `upgrade.sql`。
+2. 新增迁移文件并更新 `plugin.json`。
 3. 先执行数据库向前兼容变更，再发布可兼容新旧结构的代码。
 4. 写入迁移成功记录并更新插件版本。
 5. 同时发布后端和管理端构建产物。
@@ -486,7 +480,7 @@ func (p *Plugin) RegisterAdminRoutes(
 ### 后端
 
 - [ ] 插件 ID、版本、核心版本和依赖声明正确。
-- [ ] 已在 `internal/plugins/register.go` 注册。
+- [ ] 插件导出 `New()`，安装器可以生成 `register_gen.go`。
 - [ ] Controller、Logic、Param、Resp、Model 分层符合规范。
 - [ ] Logic 没有直接返回 Model。
 - [ ] 关联关系只在 Resp 定义，并检查了 N+1 查询。
@@ -506,7 +500,7 @@ func (p *Plugin) RegisterAdminRoutes(
 - [ ] 唯一性、关联字段、筛选和排序字段索引合理。
 - [ ] SQL 不会删除或覆盖现有业务数据。
 - [ ] 迁移版本和 SHA256 摘要已写入迁移记录。
-- [ ] 菜单和权限 SQL 不与现有数据冲突。
+- [ ] 菜单业务键唯一、父级存在，清单中没有固定菜单 ID。
 
 ### 管理端
 
