@@ -108,6 +108,9 @@ func (a *App) CheckTables() error {
 	if len(missing) > 0 {
 		return fmt.Errorf("缺少核心数据表 %v，请先执行 sql/v0.0.1 初始化脚本及后续版本升级脚本", missing)
 	}
+	if !a.DB.Migrator().HasColumn(&model.SysPluginMenu{}, "parent_source") {
+		return fmt.Errorf("sys_plugin_menu缺少parent_source字段，请执行sql/v0.0.2/plugin_menu_parent_custom.sql")
+	}
 	var userCount int64
 	a.DB.Model(&model.SysUser{}).Count(&userCount)
 	if userCount == 0 {

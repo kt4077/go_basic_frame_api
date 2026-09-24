@@ -23,3 +23,9 @@ const (
 	PluginInstallStatusSuccess = 1 // 执行成功
 	PluginInstallStatusFailed  = 2 // 执行失败
 )
+
+// 插件菜单父级来源枚举，从 1 开始定义。
+const (
+	PluginMenuParentDefault = 1 // 使用插件清单声明的默认父级
+	PluginMenuParentCustom  = 2 // 使用管理员在菜单管理中设置的父级
+)

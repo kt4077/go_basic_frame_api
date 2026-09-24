@@ -192,13 +192,38 @@ func validatePackage(root string, manifest *PackageManifest) error {
 	if _, err := os.Stat(filepath.Join(serverDir, "plugin.go")); err != nil {
 		return errors.New("插件包缺少后端plugin.go")
 	}
-	apiDocumentPath := filepath.Join(root, "docs", "API.md")
+	apiDocumentRelativePath := filepath.Join("docs", "api", "v"+manifest.Version+".md")
+	apiDocumentPath := filepath.Join(root, apiDocumentRelativePath)
 	apiDocumentInfo, err := os.Stat(apiDocumentPath)
 	if err != nil || apiDocumentInfo.IsDir() {
-		return errors.New("插件包缺少docs/API.md接口文档")
+		return fmt.Errorf("插件包缺少当前版本接口文档%s", filepath.ToSlash(apiDocumentRelativePath))
 	}
 	if apiDocumentInfo.Size() == 0 {
-		return errors.New("插件包docs/API.md接口文档不能为空")
+		return fmt.Errorf("插件包当前版本接口文档%s不能为空", filepath.ToSlash(apiDocumentRelativePath))
+	}
+	updateDocumentPath := filepath.Join(root, "docs", "updates", "v"+manifest.Version+".md")
+	updateDocumentInfo, err := os.Stat(updateDocumentPath)
+	if err != nil || updateDocumentInfo.IsDir() {
+		return fmt.Errorf("插件包缺少当前版本更新说明docs/updates/v%s.md", manifest.Version)
+	}
+	if updateDocumentInfo.Size() == 0 {
+		return fmt.Errorf("插件包当前版本更新说明docs/updates/v%s.md不能为空", manifest.Version)
+	}
+	databaseDocumentRelativePath := filepath.Join("docs", "database", "v"+manifest.Version+".md")
+	databaseDocumentPath := filepath.Join(root, databaseDocumentRelativePath)
+	databaseDocumentInfo, err := os.Stat(databaseDocumentPath)
+	if err != nil || databaseDocumentInfo.IsDir() {
+		return fmt.Errorf("插件包缺少当前版本数据库说明%s", filepath.ToSlash(databaseDocumentRelativePath))
+	}
+	if databaseDocumentInfo.Size() == 0 {
+		return fmt.Errorf("插件包当前版本数据库说明%s不能为空", filepath.ToSlash(databaseDocumentRelativePath))
+	}
+	databaseDocument, err := os.ReadFile(databaseDocumentPath)
+	if err != nil {
+		return fmt.Errorf("读取%s失败: %w", filepath.ToSlash(databaseDocumentRelativePath), err)
+	}
+	if err := validateDatabaseDocument(databaseDocument); err != nil {
+		return err
 	}
 	seenMenus := make(map[string]struct{}, len(manifest.Menus))
 	for _, menu := range manifest.Menus {
@@ -250,6 +275,20 @@ func validatePackage(root string, manifest *PackageManifest) error {
 		}
 		if err := ValidateMigrationSQL(manifest.PluginID, string(content)); err != nil {
 			return fmt.Errorf("迁移%s不安全: %w", migration.Version, err)
+		}
+	}
+	return nil
+}
+
+func validateDatabaseDocument(content []byte) error {
+	document := string(content)
+	requiredDeclarations := []string{
+		"插件业务表", "外部数据库引用", "是否引用核心业务表", "是否引用其他插件表",
+		"是否允许 Purge", "是否自动删除文件", "Remove", "Purge",
+	}
+	for _, declaration := range requiredDeclarations {
+		if !strings.Contains(document, declaration) {
+			return fmt.Errorf("版本数据库说明缺少必填声明：%s", declaration)
 		}
 	}
 	return nil

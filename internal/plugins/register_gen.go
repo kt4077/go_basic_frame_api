@@ -4,8 +4,11 @@ package plugins
 
 import (
 	commonplugin "server_api/internal/common/plugin"
+	plugin_news "server_api/internal/plugins/news"
 )
 
 func generatedBuiltins() []commonplugin.Plugin {
-	return []commonplugin.Plugin{}
+	return []commonplugin.Plugin{
+		plugin_news.New(),
+	}
 }

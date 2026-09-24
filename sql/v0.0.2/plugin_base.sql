@@ -86,10 +86,38 @@ CREATE TABLE IF NOT EXISTS `sys_plugin_menu` (
   `menu_key` varchar(64) COLLATE utf8mb4_general_ci NOT NULL COMMENT '插件内菜单业务键',
   `menu_id` bigint unsigned NOT NULL COMMENT '系统菜单ID',
   `parent_key` varchar(64) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '插件内父级菜单业务键',
+  `parent_source` tinyint unsigned NOT NULL DEFAULT '1' COMMENT '父级来源，1插件默认，2管理员自定义',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_plugin_menu_key` (`plugin_id`, `menu_key`),
   UNIQUE KEY `uk_plugin_menu_id` (`menu_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='插件菜单业务键映射表';
+
+SET @plugin_parent_source_exists := (
+  SELECT COUNT(*) FROM `information_schema`.`COLUMNS`
+  WHERE `TABLE_SCHEMA` = DATABASE()
+    AND `TABLE_NAME` = 'sys_plugin_menu'
+    AND `COLUMN_NAME` = 'parent_source'
+);
+SET @plugin_parent_source_sql := IF(
+  @plugin_parent_source_exists = 0,
+  'ALTER TABLE `sys_plugin_menu` ADD COLUMN `parent_source` tinyint unsigned NOT NULL DEFAULT ''1'' COMMENT ''父级来源，1插件默认，2管理员自定义'' AFTER `parent_key`',
+  'SELECT 1'
+);
+PREPARE plugin_parent_source_stmt FROM @plugin_parent_source_sql;
+EXECUTE plugin_parent_source_stmt;
+DEALLOCATE PREPARE plugin_parent_source_stmt;
+
+UPDATE `sys_plugin_menu` AS `plugin_menu`
+JOIN `sys_menu` AS `menu` ON `menu`.`id` = `plugin_menu`.`menu_id`
+LEFT JOIN `sys_plugin_menu` AS `parent_mapping`
+  ON `parent_mapping`.`plugin_id` = `plugin_menu`.`plugin_id`
+  AND `parent_mapping`.`menu_key` = `plugin_menu`.`parent_key`
+SET `plugin_menu`.`parent_source` = 2
+WHERE `menu`.`type` <> 3
+  AND `menu`.`parent_id` <> CASE
+    WHEN `plugin_menu`.`parent_key` = '' THEN 0
+    ELSE COALESCE(`parent_mapping`.`menu_id`, 0)
+  END;
 
 CREATE TABLE IF NOT EXISTS `sys_plugin_install_log` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键ID',
