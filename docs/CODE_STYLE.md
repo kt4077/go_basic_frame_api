@@ -18,7 +18,7 @@ go_backend_frame/
 │   │   ├── common/   # 两端共用：app / auth / enums / middleware / model / upload
 │   │   ├── admin/    # 管理端：controller / logic / param / resp / middleware / permission
 │   │   └── api/      # 用户端：controller / logic / param / resp
-│   ├── pkg/          # 无业务归属的工具：response / pagination / password / tree / dberror / oss / mask
+│   ├── pkg/          # 无业务归属的工具：response / pagination / password / tree / dberror / oss / mask / sms / sn
 │   ├── sql/          # 数据库脚本（建表与升级）
 │   └── docs/         # 接口文档与本规范
 └── admin_client/     # 前端：Vue 3 + Vite + TS + Element Plus

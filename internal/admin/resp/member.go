@@ -14,6 +14,7 @@ type MemberListRes struct {
 
 type MemberItem struct {
 	BaseItem       `comment:"基础字段"`
+	SN             string     `json:"sn" comment:"用户编号"`
 	Nickname       string     `json:"nickname" comment:"昵称"`
 	RealName       string     `json:"real_name" comment:"姓名"`
 	Account        string     `json:"account" comment:"登录账号"`
@@ -34,9 +35,10 @@ type MemberItem struct {
 func NewMemberItem(v model.SysMember) MemberItem {
 	return MemberItem{
 		BaseItem:       base(v.Base),
+		SN:             v.SN,
 		Nickname:       v.Nickname,
 		RealName:       v.RealName,
-		Account:        v.Account,
+		Account:        memberAccount(v.Account),
 		Mobile:         mask.Mobile(v.Mobile),
 		Avatar:         v.Avatar,
 		Gender:         v.Gender,
@@ -58,6 +60,14 @@ func NewMemberItems(list []model.SysMember) []MemberItem {
 		result = append(result, NewMemberItem(v))
 	}
 	return result
+}
+
+// memberAccount 登录账号为 NULL（未设置）时返回空串。
+func memberAccount(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
 }
 
 // formatMemberDate 出生日期只保留日期部分，未设置返回空串。

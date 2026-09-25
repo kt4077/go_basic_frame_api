@@ -12,6 +12,8 @@ import (
 	"server_api/internal/admin/param"
 	"server_api/internal/admin/permission"
 	"server_api/internal/admin/resp"
+	commonupload "server_api/internal/common/upload"
+
 	"server_api/internal/common/app"
 	"server_api/internal/common/auth"
 	"server_api/internal/common/enums"
@@ -68,7 +70,7 @@ func (l *AuthLogic) Me(c *gin.Context) (*resp.UserItem, error) {
 
 // UpdateProfile 修改当前管理员的个人资料，不允许在此变更权限、部门或账号状态。
 func (l *AuthLogic) UpdateProfile(c *gin.Context, req *param.ProfileUpdateReq) (*resp.UserItem, error) {
-	avatar, err := normalizeFilePath(l.App, req.Avatar)
+	avatar, err := commonupload.NormalizeFilePath(l.App, req.Avatar)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +96,7 @@ func (l *AuthLogic) UpdateProfile(c *gin.Context, req *param.ProfileUpdateReq) (
 
 // UpdateAvatar 单独修改当前管理员头像，不影响尚未保存的其他个人资料。
 func (l *AuthLogic) UpdateAvatar(c *gin.Context, req *param.AvatarUpdateReq) (*resp.UserItem, error) {
-	avatar, err := normalizeFilePath(l.App, req.Avatar)
+	avatar, err := commonupload.NormalizeFilePath(l.App, req.Avatar)
 	if err != nil {
 		return nil, err
 	}

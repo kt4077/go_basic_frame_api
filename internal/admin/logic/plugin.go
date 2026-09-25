@@ -122,7 +122,7 @@ func (l *PluginLogic) UpdateInfo(c *gin.Context, req *param.PluginInfoUpdateReq)
 	author := strings.TrimSpace(req.Author)
 	homepage := strings.TrimSpace(req.Homepage)
 	description := strings.TrimSpace(req.Description)
-	logo, err := normalizeFilePath(l.App, req.Logo)
+	logo, err := upload.NormalizeFilePath(l.App, req.Logo)
 	if err != nil {
 		return errors.New("插件Logo路径不合法")
 	}

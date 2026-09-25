@@ -1087,6 +1087,47 @@ paths:
                       data:
                         $ref: '#/components/schemas/OperationLogListRes'
 
+  /admin/log/operation/delete:
+    post:
+      tags: [操作日志]
+      summary: 删除操作日志
+      description: 支持按 ID 列表删除。
+      operationId: adminOperationLogDelete
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  description: 日志ID列表
+                  items:
+                    type: integer
+              required: [ids]
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+  /admin/log/operation/clear:
+    post:
+      tags: [操作日志]
+      summary: 清空操作日志
+      description: 清空全部操作日志，不可恢复，执行前请确认。
+      operationId: adminOperationLogClear
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
   ########################## 插件管理 ##########################
   /admin/plugin/list:
     get:
@@ -2111,6 +2152,10 @@ components:
         - $ref: '#/components/schemas/BaseItem'
         - type: object
           properties:
+            sn:
+              type: string
+              description: 用户编号，全局唯一，cf 前缀 + 8 位小写字母和数字
+              example: cfk3m9x2a
             nickname:
               type: string
               description: 昵称

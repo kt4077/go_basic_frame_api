@@ -8,6 +8,8 @@ import (
 	"server_api/internal/admin/param"
 	"server_api/internal/admin/resp"
 	"server_api/internal/common/app"
+	"server_api/internal/common/auth"
+	"server_api/internal/common/enums"
 	"server_api/internal/common/model"
 	commonupload "server_api/internal/common/upload"
 	"server_api/pkg/pagination"
@@ -21,8 +23,9 @@ func (l *MemberLogic) List(c *gin.Context, req *param.MemberListReq) (*resp.Memb
 	var members []model.SysMember
 	db := l.App.DB.Model(&model.SysMember{})
 	if req.Keyword != "" {
-		db = db.Where("nickname LIKE ? OR real_name LIKE ? OR account LIKE ? OR mobile LIKE ?",
-			"%"+req.Keyword+"%", "%"+req.Keyword+"%", "%"+req.Keyword+"%", "%"+req.Keyword+"%")
+		like := "%" + req.Keyword + "%"
+		db = db.Where("sn LIKE ? OR nickname LIKE ? OR real_name LIKE ? OR account LIKE ? OR mobile LIKE ?",
+			like, like, like, like, like)
 	}
 	if req.Status != 0 {
 		db = db.Where("status = ?", req.Status)
@@ -56,6 +59,10 @@ func (l *MemberLogic) SetStatus(c *gin.Context, req *param.MemberSetStatusReq) e
 	}
 	if err := l.App.DB.Model(&member).Update("status", req.Status).Error; err != nil {
 		return errors.New("操作失败")
+	}
+	// 禁用后立即使其在线会话失效
+	if req.Status == enums.StatusDisabled {
+		return auth.KickMember(l.App, &member)
 	}
 	return nil
 }

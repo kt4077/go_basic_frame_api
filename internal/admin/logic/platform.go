@@ -34,7 +34,7 @@ func (l *PlatformLogic) AdminDetail(c *gin.Context) (*resp.AdminPlatformConfigRe
 
 // SaveAdmin 保存管理端平台配置。
 func (l *PlatformLogic) SaveAdmin(c *gin.Context, req *param.AdminPlatformSaveReq) (*resp.AdminPlatformConfigRes, error) {
-	logo, err := normalizeFilePath(l.App, req.Logo)
+	logo, err := upload.NormalizeFilePath(l.App, req.Logo)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +61,7 @@ func (l *PlatformLogic) UserDetail(c *gin.Context) (*resp.UserPlatformConfigRes,
 
 // SaveUser 保存用户端平台配置。
 func (l *PlatformLogic) SaveUser(c *gin.Context, req *param.UserPlatformSaveReq) (*resp.UserPlatformConfigRes, error) {
-	avatar, err := normalizeFilePath(l.App, req.DefaultAvatar)
+	avatar, err := upload.NormalizeFilePath(l.App, req.DefaultAvatar)
 	if err != nil {
 		return nil, err
 	}

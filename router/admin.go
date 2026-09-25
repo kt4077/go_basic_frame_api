@@ -10,6 +10,7 @@ import (
 	"server_api/internal/admin/logic"
 	adminmiddleware "server_api/internal/admin/middleware"
 	"server_api/internal/common/app"
+	"server_api/internal/common/enums"
 	commonmiddleware "server_api/internal/common/middleware"
 	commonplugin "server_api/internal/common/plugin"
 	commonupload "server_api/internal/common/upload"
@@ -45,7 +46,7 @@ func AdminRoutes(application *app.App, pluginRegistry *commonplugin.Registry) (*
 	}
 
 	// 需登录
-	auth := r.Group("/admin", commonmiddleware.Auth(application), adminmiddleware.OperationLog(application))
+	auth := r.Group("/admin", commonmiddleware.Auth(application, enums.ClientAdmin), adminmiddleware.OperationLog(application))
 	{
 		auth.POST("/logout", authC.Logout)
 		auth.GET("/me", authC.Me)
@@ -57,7 +58,7 @@ func AdminRoutes(application *app.App, pluginRegistry *commonplugin.Registry) (*
 	}
 
 	// 需登录 + 接口级权限（api_path 与菜单/按钮绑定）
-	perm := r.Group("/admin", commonmiddleware.Auth(application), adminmiddleware.Permission(application), adminmiddleware.OperationLog(application))
+	perm := r.Group("/admin", commonmiddleware.Auth(application, enums.ClientAdmin), adminmiddleware.Permission(application), adminmiddleware.OperationLog(application))
 	{
 		// 系统总览
 		perm.GET("/dashboard/overview", dashC.Overview)

@@ -6,11 +6,13 @@ CREATE TABLE IF NOT EXISTS `sys_member` (
   `created_at` datetime(3) DEFAULT NULL COMMENT '创建时间',
   `updated_at` datetime(3) DEFAULT NULL COMMENT '更新时间',
   `deleted_at` datetime(3) DEFAULT NULL COMMENT '删除时间',
+  `sn` varchar(32) COLLATE utf8mb4_general_ci NOT NULL COMMENT '用户编号，全局唯一',
   `nickname` varchar(32) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '昵称',
   `real_name` varchar(32) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '姓名',
-  `account` varchar(32) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '登录账号',
+  `account` varchar(32) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '登录账号，唯一，未设置为NULL',
   `mobile` varchar(16) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '手机号',
   `password` varchar(128) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '登录密码bcrypt密文',
+  `login_id` varchar(64) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '当前登录会话ID，重新登录后旧会话失效',
   `avatar` varchar(512) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '头像相对路径',
   `gender` tinyint NOT NULL DEFAULT '3' COMMENT '性别：1男，2女，3未知',
   `age` tinyint unsigned NOT NULL DEFAULT '0' COMMENT '年龄',
@@ -24,9 +26,10 @@ CREATE TABLE IF NOT EXISTS `sys_member` (
   `status` tinyint NOT NULL DEFAULT '1' COMMENT '账号状态：1启用，2禁用',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_sys_member_mobile` (`mobile`),
+  UNIQUE KEY `uk_sys_member_sn` (`sn`),
+  UNIQUE KEY `uk_sys_member_account` (`account`),
   KEY `idx_sys_member_deleted_at` (`deleted_at`),
-  KEY `idx_sys_member_status` (`status`),
-  KEY `idx_sys_member_account` (`account`)
+  KEY `idx_sys_member_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='会员用户表';
 
 -- 菜单通过 path/api_path 业务键判断是否已存在，不指定自增ID；普通角色权限由管理员在角色管理中分配。

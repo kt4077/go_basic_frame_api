@@ -5,11 +5,13 @@ import "time"
 // SysMember 会员（C端用户）账号表。表：sys_member
 type SysMember struct {
 	Base
+	SN             string     `gorm:"column:sn;size:32;not null;uniqueIndex;comment:用户编号，全局唯一" json:"sn"`
 	Nickname       string     `gorm:"size:32;default:'';comment:昵称" json:"nickname"`
 	RealName       string     `gorm:"size:32;default:'';comment:姓名" json:"real_name"`
-	Account        string     `gorm:"size:32;default:'';index;comment:登录账号" json:"account"`
+	Account        *string    `gorm:"column:account;size:32;uniqueIndex;comment:登录账号，唯一，未设置为NULL" json:"account"`
 	Mobile         string     `gorm:"size:16;not null;uniqueIndex;comment:手机号" json:"mobile"`
 	Password       string     `gorm:"size:128;default:'';comment:登录密码密文" json:"-"`
+	LoginID        string     `gorm:"column:login_id;size:64;default:'';comment:当前登录会话ID，重新登录后旧会话失效" json:"-"`
 	Avatar         string     `gorm:"size:512;default:'';comment:头像相对路径" json:"avatar"`
 	Gender         int        `gorm:"default:3;comment:性别：1男，2女，3未知" json:"gender"`
 	Age            int        `gorm:"default:0;comment:年龄" json:"age"`
