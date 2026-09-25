@@ -4,16 +4,16 @@
 
 ```
 src/
-├── api/         按业务模块封装请求（auth / user / role / menu / dept / sms / wechat / payment / storage / platform / upload / operation_log / dashboard）
+├── api/         按业务模块封装请求（auth / user / member / role / menu / dept / sms / wechat / payment / storage / platform / upload / operation_log / dashboard）
 ├── types/       与 api 同名的请求与响应类型
-├── enums/       前端枚举（common / menu / channel / storage / platform）
+├── enums/       前端枚举（common / menu / member / channel / storage / platform）
 ├── utils/       auth（token）、datetime、echarts、views
 ├── store/       Pinia：app / user / platform / tags
 ├── router/      静态路由 + 后端菜单驱动的动态路由
 ├── directives/  v-perm 等
 ├── components/  通用组件（如 AvatarUpload）
 ├── styles/      主题变量与公共样式
-└── views/       config / dashboard / error / login / maintain / profile / redirect / system
+└── views/       config / dashboard / error / login / maintain / profile / redirect / system / user
 ```
 
 页面路径与后端菜单 `path` 对应：`/system/user` → `src/views/system/user/index.vue`。

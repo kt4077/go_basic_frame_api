@@ -25,6 +25,7 @@ func AdminRoutes(application *app.App, pluginRegistry *commonplugin.Registry) (*
 	menuC := &controller.MenuController{Logic: &logic.MenuLogic{App: application}}
 	roleC := &controller.RoleController{Logic: &logic.RoleLogic{App: application}}
 	userC := &controller.UserController{Logic: &logic.UserLogic{App: application}}
+	memberC := &controller.MemberController{Logic: &logic.MemberLogic{App: application}}
 	deptC := &controller.DeptController{Logic: &logic.DeptLogic{App: application}}
 	storageC := &controller.StorageController{Logic: &logic.StorageLogic{App: application}}
 	uploadC := &controller.UploadController{App: application}
@@ -85,6 +86,10 @@ func AdminRoutes(application *app.App, pluginRegistry *commonplugin.Registry) (*
 		perm.POST("/user/delete", userC.Delete)
 		perm.POST("/user/reset_password", userC.ResetPassword)
 		perm.POST("/user/kick", userC.Kick)
+
+		// 用户管理：系统用户
+		perm.GET("/member/list", memberC.List)
+		perm.POST("/member/set_status", memberC.SetStatus)
 
 		// 文件上传（通用接口，免接口鉴权：见 enums.SkipPermissionApis）
 		perm.POST("/upload/file", uploadC.Upload)

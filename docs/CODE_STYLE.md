@@ -18,7 +18,7 @@ go_backend_frame/
 │   │   ├── common/   # 两端共用：app / auth / enums / middleware / model / upload
 │   │   ├── admin/    # 管理端：controller / logic / param / resp / middleware / permission
 │   │   └── api/      # 用户端：controller / logic / param / resp
-│   ├── pkg/          # 无业务归属的工具：response / pagination / password / tree / dberror / oss
+│   ├── pkg/          # 无业务归属的工具：response / pagination / password / tree / dberror / oss / mask
 │   ├── sql/          # 数据库脚本（建表与升级）
 │   └── docs/         # 接口文档与本规范
 └── admin_client/     # 前端：Vue 3 + Vite + TS + Element Plus
@@ -100,6 +100,7 @@ type UserSaveReq struct {
 - 批量写入、跨表一致性变更使用事务；保存类接口优先使用 `clause.OnConflict` 做 upsert，避免并发产生重复数据。
 - 并发一致性依赖数据库唯一约束（如角色编码唯一、唯一默认渠道），不能只靠应用层判断。
 - 软删除模型使用 `gorm.DeletedAt`，查询默认排除已删除记录。
+- 金额类字段数据库使用 `decimal`（如 `sys_member.balance` 为 `decimal(12,2)`），Go 模型与 Resp 用字符串承载，禁止 float/double，避免精度丢失。
 
 ### 2.6 鉴权与权限
 
@@ -223,3 +224,4 @@ pnpm build
 3. **接口文档**：后端接口变更同步 `docs/admin_openapi.yaml`，并更新 Apifox 在线文档与 README 顶部文档地址。
 4. **双端一致**：字段命名、枚举取值、分页结构（`list` + `total`）、响应结构（`code`/`msg`/`data`）前后端必须一致。
 5. **不要过度设计**：新增能力优先复用现有 `pkg/` 与 `common/`；只有在确认无复用可能时才新增包。
+6. **发版说明**：每次发版必须在 `docs/update_doc/` 新增 `v{version}.md` 版本功能说明，内容参照 `v0.0.1.md` / `v0.0.2.md` 的结构（版本目标、主要变更、数据库升级、部署顺序、验证命令）。

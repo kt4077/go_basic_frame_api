@@ -18,7 +18,7 @@ internal/
     controller/ logic/ param/ resp/ middleware/ permission/
   api/
     controller/ logic/ param/ resp/
-pkg/        response pagination password tree dberror oss
+pkg/        response pagination password tree dberror oss mask
 sql/        建表与升级脚本
 docs/       接口文档与规范
 ```

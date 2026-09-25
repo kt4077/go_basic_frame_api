@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"server_api/internal/common/model"
+	"server_api/pkg/mask"
 )
 
 type LoginRes struct {
@@ -40,7 +41,7 @@ type DeptItem struct {
 }
 
 func NewUserItem(v model.SysUser) UserItem {
-	return UserItem{ID: v.ID, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt, Username: v.Username, Nickname: v.Nickname, Avatar: v.Avatar, Mobile: v.Mobile, Email: v.Email, DeptID: v.DeptID, Status: v.Status, IsSuper: v.IsSuper}
+	return UserItem{ID: v.ID, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt, Username: v.Username, Nickname: v.Nickname, Avatar: v.Avatar, Mobile: mask.Mobile(v.Mobile), Email: v.Email, DeptID: v.DeptID, Status: v.Status, IsSuper: v.IsSuper}
 }
 
 func NewDeptItem(v model.SysDept) DeptItem {

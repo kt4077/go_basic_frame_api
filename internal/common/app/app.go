@@ -91,7 +91,7 @@ func (a *App) Close() error {
 // 不加入核心静态清单，避免停用的可选插件阻止核心服务启动。
 func (a *App) CheckTables() error {
 	required := []string{
-		"sys_dept", "sys_user", "sys_role", "sys_menu",
+		"sys_dept", "sys_user", "sys_member", "sys_role", "sys_menu",
 		"sys_user_login", "sys_user_role", "sys_role_menu",
 		"sys_operation_log", "sys_storage_config", "sys_upload_file",
 		"sys_sms_config", "sys_sms_signature", "sys_sms_template", "sys_sms_send_log",

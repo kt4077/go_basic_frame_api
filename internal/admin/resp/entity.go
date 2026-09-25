@@ -6,6 +6,7 @@ import (
 	"gorm.io/gorm"
 
 	"server_api/internal/common/model"
+	"server_api/pkg/mask"
 )
 
 type BaseItem struct {
@@ -208,7 +209,7 @@ func NewSMSTemplateItem(v model.SysSMSTemplate) SMSTemplateItem {
 	return SMSTemplateItem{BaseItem: base(v.Base), ConfigID: v.ConfigID, Name: v.Name, TemplateCode: v.TemplateCode, Type: v.Type, Content: v.Content, Status: v.Status, Remark: v.Remark}
 }
 func NewSMSLogItem(v model.SysSMSSendLog) SMSLogItem {
-	return SMSLogItem{ID: v.ID, CreatedAt: v.CreatedAt, ConfigID: v.ConfigID, SignatureID: v.SignatureID, TemplateID: v.TemplateID, Mobile: v.Mobile, Content: v.Content, Status: v.Status, ProviderMessageID: v.ProviderMessageID, ErrorMessage: v.ErrorMessage, SentAt: v.SentAt}
+	return SMSLogItem{ID: v.ID, CreatedAt: v.CreatedAt, ConfigID: v.ConfigID, SignatureID: v.SignatureID, TemplateID: v.TemplateID, Mobile: mask.Mobile(v.Mobile), Content: v.Content, Status: v.Status, ProviderMessageID: v.ProviderMessageID, ErrorMessage: v.ErrorMessage, SentAt: v.SentAt}
 }
 func NewWechatConfigItem(v model.SysWechatConfig) WechatConfigItem {
 	return WechatConfigItem{BaseItem: base(v.Base), Name: v.Name, Type: v.Type, AppID: v.AppID, Status: v.Status, Remark: v.Remark}

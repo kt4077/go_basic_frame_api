@@ -30,6 +30,8 @@ info:
 
     ## 通用枚举
     - 启用状态 status：1 启用、2 禁用
+    - 用户性别 gender：1 男、2 女、3 未知
+    - 用户注册来源 register_source：1 微信小程序、2 微信公众号、3 iOS、4 Android
     - 菜单类型 type：1 目录、2 菜单页面、3 按钮
     - 菜单显示状态 status：1 显示、2 隐藏
     - 短信服务商 provider：1 阿里云、2 腾讯云
@@ -65,6 +67,8 @@ tags:
     description: 角色增删改查、角色树、分配菜单、查看角色用户
   - name: 用户管理
     description: 管理员账号的增删改查、重置密码、踢下线
+  - name: 系统用户
+    description: C端会员用户的查询展示与账号启用/禁用
   - name: 部门管理
     description: 部门树与增删改
   - name: 文件上传
@@ -839,6 +843,69 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/IDReq'
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+  ########################## 系统用户 ##########################
+  /admin/member/list:
+    get:
+      tags: [系统用户]
+      summary: 系统用户分页列表
+      description: C端会员用户信息展示，按注册时间倒序。
+      operationId: adminMemberList
+      parameters:
+        - name: keyword
+          in: query
+          description: 搜索关键字（昵称/姓名/账号/手机号）
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: 账号状态 1启用 2禁用
+          schema:
+            type: integer
+            enum: [1, 2]
+        - name: register_source
+          in: query
+          description: 注册来源 1微信小程序 2微信公众号 3iOS 4Android
+          schema:
+            type: integer
+            enum: [1, 2, 3, 4]
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/PageSizeQuery'
+      responses:
+        '200':
+          description: 系统用户列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MemberListRes'
+
+  /admin/member/set_status:
+    post:
+      tags: [系统用户]
+      summary: 启用/禁用系统用户账号
+      description: 目标状态与当前状态一致时幂等返回成功。
+      operationId: adminMemberSetStatus
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemberSetStatusReq'
+            example:
+              id: 1
+              status: 2
       responses:
         '200':
           description: 操作成功
@@ -2039,6 +2106,70 @@ components:
               items:
                 $ref: '#/components/schemas/RoleItem'
 
+    MemberItem:
+      allOf:
+        - $ref: '#/components/schemas/BaseItem'
+        - type: object
+          properties:
+            nickname:
+              type: string
+              description: 昵称
+              example: 小小
+            real_name:
+              type: string
+              description: 姓名
+              example: 王小民
+            account:
+              type: string
+              description: 登录账号
+              example: xiaoxiaomin
+            mobile:
+              type: string
+              description: 手机号，脱敏展示（如 138****8001）
+              example: "138****8001"
+            avatar:
+              type: string
+              description: 头像访问地址（按当前默认存储动态生成）
+              example: /files/2026/09/25/8f14e45fceea167a5a36dedd4bea2543.png
+            gender:
+              type: integer
+              description: 性别 1男 2女 3未知
+              enum: [1, 2, 3]
+            age:
+              type: integer
+              description: 年龄
+              example: 26
+            birthday:
+              type: string
+              description: 出生日期，格式 YYYY-MM-DD，未设置为空串
+              example: "1999-01-01"
+            register_ip:
+              type: string
+              description: 注册IP
+            login_ip:
+              type: string
+              description: 最近登录IP
+            registered_at:
+              type: string
+              format: date-time
+              description: 注册时间，未设置为 null
+            logged_at:
+              type: string
+              format: date-time
+              description: 最近登录时间，未设置为 null
+            balance:
+              type: string
+              description: 账户余额，两位小数字符串，避免浮点精度问题
+              example: "128.50"
+            register_source:
+              type: integer
+              description: 注册来源 1微信小程序 2微信公众号 3iOS 4Android
+              enum: [1, 2, 3, 4]
+            status:
+              type: integer
+              description: 账号状态 1启用 2禁用
+              enum: [1, 2]
+
     DeptItem:
       allOf:
         - $ref: '#/components/schemas/BaseItem'
@@ -2300,7 +2431,7 @@ components:
           description: 模板ID
         mobile:
           type: string
-          description: 手机号
+          description: 手机号（脱敏展示，如 138****8001）
         content:
           type: string
           description: 发送内容
@@ -2504,6 +2635,19 @@ components:
           example: /files/2026/09/23/8f14e45fceea167a5a36dedd4bea2543.png
 
     # ---------------- 列表响应 ----------------
+    MemberListRes:
+      type: object
+      properties:
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemberItem'
+        total:
+          type: integer
+          format: int64
+          description: 数据总数
+          example: 36
+
     UserListRes:
       type: object
       properties:
@@ -2812,6 +2956,19 @@ components:
           minLength: 6
           example: "654321"
       required: [id, password]
+
+    MemberSetStatusReq:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: 用户ID
+          example: 1
+        status:
+          type: integer
+          description: 目标状态 1启用 2禁用
+          enum: [1, 2]
+      required: [id, status]
 
     DeptSaveReq:
       type: object
