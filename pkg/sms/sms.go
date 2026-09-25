@@ -7,17 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-)
 
-// 渠道类型，与 internal/common/enums 保持一致。
-const (
-	ProviderAliyun  = 1
-	ProviderTencent = 2
+	"server_api/internal/common/enums"
 )
 
 // Config 短信渠道配置，来源于 sys_sms_config。
+// 渠道枚举统一取自 internal/common/enums，本包不再单独定义。
 type Config struct {
-	Provider        int    // 渠道：1阿里云，2腾讯云
+	Provider        int    // 渠道：enums.SMSProviderAliyun，enums.SMSProviderTencent
 	AccessKeyID     string // 访问密钥ID
 	AccessKeySecret string // 访问密钥Secret
 	Endpoint        string // 自定义服务地址，留空使用各渠道默认地址
@@ -33,7 +30,7 @@ type Message struct {
 
 // Validate 校验配置与消息的必填项。
 func (c Config) Validate() error {
-	if c.Provider != ProviderAliyun && c.Provider != ProviderTencent {
+	if c.Provider != enums.SMSProviderAliyun && c.Provider != enums.SMSProviderTencent {
 		return errors.New("不支持的短信渠道")
 	}
 	if c.AccessKeyID == "" || c.AccessKeySecret == "" {
@@ -62,9 +59,9 @@ func Send(ctx context.Context, cfg Config, msg Message) error {
 		return err
 	}
 	switch cfg.Provider {
-	case ProviderAliyun:
+	case enums.SMSProviderAliyun:
 		return sendAliyun(ctx, cfg, msg)
-	case ProviderTencent:
+	case enums.SMSProviderTencent:
 		return sendTencent(ctx, cfg, msg)
 	default:
 		return fmt.Errorf("不支持的短信渠道: %d", cfg.Provider)

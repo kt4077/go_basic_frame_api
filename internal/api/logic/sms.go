@@ -15,6 +15,7 @@ import (
 
 	"server_api/internal/api/param"
 	"server_api/internal/common/app"
+	"server_api/internal/common/enums"
 	"server_api/internal/common/model"
 	"server_api/pkg/sms"
 )
@@ -94,23 +95,23 @@ func (l *SmsLogic) SendSmsCode(c *gin.Context, req *param.SmsCodeReq) error {
 func (l *SmsLogic) writeLimitLog(mobile, reason string) {
 	sentAt := time.Now()
 	_ = l.App.DB.Create(&model.SysSMSSendLog{
-		Mobile: mobile, Status: 3, ErrorMessage: reason, SentAt: &sentAt,
+		Mobile: mobile, Status: enums.SMSSendFailed, ErrorMessage: reason, SentAt: &sentAt,
 	}).Error
 }
 
 // sendSms 按当前短信配置读取签名与验证码模板并发送，发送结果写入短信发送记录。
 func (l *SmsLogic) sendSms(c *gin.Context, mobile, code string) error {
 	var config model.SysSMSConfig
-	if err := l.App.DB.Where("status = ?", 1).Order("id ASC").First(&config).Error; err != nil {
+	if err := l.App.DB.Where("status = ?", enums.StatusEnabled).Order("id ASC").First(&config).Error; err != nil {
 		return errors.New("短信配置不完整，请联系管理员")
 	}
 	var signature model.SysSMSSignature
-	if err := l.App.DB.Where("config_id = ? AND status = ? AND sign_code != ''", config.ID, 1).
+	if err := l.App.DB.Where("config_id = ? AND status = ? AND sign_code != ''", config.ID, enums.StatusEnabled).
 		Order("id ASC").First(&signature).Error; err != nil {
 		return errors.New("短信签名未配置，请联系管理员")
 	}
 	var template model.SysSMSTemplate
-	if err := l.App.DB.Where("config_id = ? AND status = ? AND type = ?", config.ID, 1, 1).
+	if err := l.App.DB.Where("config_id = ? AND status = ? AND type = ?", config.ID, enums.StatusEnabled, enums.SMSTemplateVerifyCode).
 		Order("id ASC").First(&template).Error; err != nil {
 		return errors.New("短信验证码模板未配置，请联系管理员")
 	}
@@ -128,9 +129,9 @@ func (l *SmsLogic) sendSms(c *gin.Context, mobile, code string) error {
 		Params:       []string{code},
 	})
 
-	status, message := 2, ""
+	status, message := enums.SMSSendSuccess, ""
 	if err != nil {
-		status, message = 3, err.Error()
+		status, message = enums.SMSSendFailed, err.Error()
 	}
 	sendLog := model.SysSMSSendLog{
 		ConfigID: config.ID, SignatureID: signature.ID, TemplateID: template.ID,
