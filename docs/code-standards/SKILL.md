@@ -50,7 +50,7 @@ description: This skill should be used when writing, modifying, or reviewing cod
 - 接口变更同步 `docs/admin_openapi.yaml` 与 Apifox 文档。
 - 配置新增同步 `config/config.go`、`config.example.yaml` 与 README 配置表。
 - 未提交 `config.yaml`、`.env*`、证书、密钥、构建产物。
-- 发版同步在 `docs/update_doc/` 新增 `v{version}.md` 版本说明。
+- 发版同步更新 `config.example.yaml` 的 `version` 配置（唯一版本来源），并在 `docs/update_doc/` 新增 `v{version}.md` 版本说明。
 
 ## 速查规则
 

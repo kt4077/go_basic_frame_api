@@ -224,4 +224,4 @@ pnpm build
 3. **接口文档**：后端接口变更同步 `docs/admin_openapi.yaml`，并更新 Apifox 在线文档与 README 顶部文档地址。
 4. **双端一致**：字段命名、枚举取值、分页结构（`list` + `total`）、响应结构（`code`/`msg`/`data`）前后端必须一致。
 5. **不要过度设计**：新增能力优先复用现有 `pkg/` 与 `common/`；只有在确认无复用可能时才新增包。
-6. **发版说明**：每次发版必须在 `docs/update_doc/` 新增 `v{version}.md` 版本功能说明，内容参照 `v0.0.1.md` / `v0.0.2.md` 的结构（版本目标、主要变更、数据库升级、部署顺序、验证命令）。
+6. **发版说明**：每次发版必须更新 `config.example.yaml` 的 `version` 配置（版本号唯一来源是 `config.yaml`，服务启动时校验必填），并在 `docs/update_doc/` 新增 `v{version}.md` 版本功能说明，内容参照 `v0.0.1.md` / `v0.0.2.md` 的结构（版本目标、主要变更、数据库升级、部署顺序、验证命令）。

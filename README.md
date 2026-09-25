@@ -122,6 +122,7 @@ openssl rand -hex 32
 
 | 配置 | 说明 | 示例 |
 | --- | --- | --- |
+| `version` | 系统版本号（必填），未设置时服务拒绝启动 | `v0.0.3` |
 | `server.admin_addr` | 管理端 API 地址 | `:8001` |
 | `server.api_addr` | 用户端 API 地址 | `:8002` |
 | `mysql.*` | MySQL 连接和连接池 | 见配置模板 |

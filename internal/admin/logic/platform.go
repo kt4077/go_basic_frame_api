@@ -29,7 +29,7 @@ func (l *PlatformLogic) AdminDetail(c *gin.Context) (*resp.AdminPlatformConfigRe
 	if err != nil {
 		return nil, errors.New("管理端Logo地址解析失败")
 	}
-	return &resp.AdminPlatformConfigRes{Logo: logo, LogoPath: config.Logo, SystemName: config.SystemName}, nil
+	return &resp.AdminPlatformConfigRes{Logo: logo, LogoPath: config.Logo, SystemName: config.SystemName, Version: l.App.Cfg.Version}, nil
 }
 
 // SaveAdmin 保存管理端平台配置。

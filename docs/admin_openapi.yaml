@@ -2777,6 +2777,10 @@ components:
         system_name:
           type: string
           description: 系统名称
+        version:
+          type: string
+          description: 系统版本号，来自服务端 config.yaml，未配置时使用编译期内置版本
+          example: v0.0.3
 
     UserPlatformConfigRes:
       type: object

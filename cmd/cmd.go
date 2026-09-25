@@ -73,13 +73,21 @@ func apiCmd() *cobra.Command {
 }
 
 func versionCmd() *cobra.Command {
-	return &cobra.Command{
+	var cfgPath string
+	cmd := &cobra.Command{
 		Use:   "version",
 		Short: "查看版本",
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("server_api v0.0.3")
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.Load(cfgPath)
+			if err != nil {
+				return err
+			}
+			fmt.Println("server_api " + cfg.Version)
+			return nil
 		},
 	}
+	cmd.Flags().StringVarP(&cfgPath, "config", "c", "config.yaml", "配置文件路径")
+	return cmd
 }
 
 func serve(cfgPath, mode string) error {
@@ -147,7 +155,7 @@ func serve(cfgPath, mode string) error {
 	}
 	errCh := make(chan error, 1)
 	go func() {
-		fmt.Printf("%s 启动: http://0.0.0.0%s\n", serviceName, addr)
+		fmt.Printf("%s %s 启动: http://0.0.0.0%s\n", serviceName, cfg.Version, addr)
 		errCh <- server.ListenAndServe()
 	}()
 
