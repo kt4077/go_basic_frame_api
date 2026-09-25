@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"server_api/internal/common/enums"
 	"server_api/pkg/response"
 )
 
@@ -18,12 +19,12 @@ const (
 )
 
 // Platform 解析平台来源与版本号请求头并写入上下文。
-// 来源必须为 1-4（1微信小程序，2微信公众号，3iOS，4Android）；
+// 来源必须是 enums 中已注册的会员注册来源枚举值；
 // 版本号仅透传不做一致性校验，供后续灰度与兼容判断使用。
 func Platform() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		source, err := strconv.Atoi(c.GetHeader(HeaderPlatformSource))
-		if err != nil || source < 1 || source > 4 {
+		if err != nil || !enums.IsValidRegisterSource(source) {
 			response.Fail(c, response.CodeErrParams, "平台来源缺失或不合法")
 			c.Abort()
 			return

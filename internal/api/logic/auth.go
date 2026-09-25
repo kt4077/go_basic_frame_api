@@ -14,6 +14,7 @@ import (
 	"server_api/internal/api/resp"
 	"server_api/internal/common/app"
 	"server_api/internal/common/auth"
+	"server_api/internal/common/enums"
 	commonmiddleware "server_api/internal/common/middleware"
 	"server_api/internal/common/model"
 	commonupload "server_api/internal/common/upload"
@@ -162,7 +163,7 @@ func (l *AuthLogic) Profile(c *gin.Context) (*resp.MemberProfile, error) {
 	return item, nil
 }
 
-// UpdateProfile 修改昵称、姓名与头像。
+// UpdateProfile 修改昵称、姓名、头像与性别。
 func (l *AuthLogic) UpdateProfile(c *gin.Context, req *param.ProfileUpdateReq) (*resp.MemberProfile, error) {
 	claims := auth.CtxClaims(c)
 	avatar, err := commonupload.NormalizeFilePath(l.App, req.Avatar)
@@ -178,6 +179,12 @@ func (l *AuthLogic) UpdateProfile(c *gin.Context, req *param.ProfileUpdateReq) (
 	}
 	if avatar != "" {
 		updates["avatar"] = avatar
+	}
+	if req.Gender != 0 {
+		if !enums.IsValidGender(req.Gender) {
+			return nil, errors.New("性别取值不合法")
+		}
+		updates["gender"] = req.Gender
 	}
 	if len(updates) == 0 {
 		return nil, errors.New("请填写需要修改的内容")

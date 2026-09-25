@@ -19,11 +19,12 @@ type SmsLoginReq struct {
 	Code   string `json:"code" binding:"required,len=6" comment:"短信验证码"`
 }
 
-// ProfileUpdateReq 会员资料修改（昵称、姓名、头像）。
+// ProfileUpdateReq 会员资料修改（昵称、姓名、头像、性别）。
 type ProfileUpdateReq struct {
 	Nickname string `json:"nickname" binding:"omitempty,max=32" comment:"昵称"`
 	RealName string `json:"real_name" binding:"omitempty,max=32" comment:"姓名"`
 	Avatar   string `json:"avatar" binding:"omitempty,max=1024" comment:"头像地址"`
+	Gender   int    `json:"gender" binding:"omitempty" comment:"性别：1男，2女，3未知；不传表示不修改"`
 }
 
 // AccountUpdateReq 登录账号修改。

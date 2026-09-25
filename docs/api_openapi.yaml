@@ -215,7 +215,7 @@ paths:
     post:
       tags: [会员资料]
       summary: 修改资料
-      description: 支持昵称、姓名、头像；头像传当前存储渠道返回的文件地址，服务端转为相对路径保存。
+      description: 支持昵称、姓名、头像、性别；头像传当前存储渠道返回的文件地址，服务端转为相对路径保存；字段不传表示不修改。
       operationId: apiProfileUpdate
       parameters:
         - $ref: '#/components/parameters/PlatformSource'
@@ -230,6 +230,7 @@ paths:
               nickname: 小明
               real_name: 王小明
               avatar: uploads/2026/09/25/8f14e45fceea167a5a36dedd4bea2543.png
+              gender: 1
       responses:
         '200':
           description: 修改后的资料
@@ -350,13 +351,16 @@ components:
   schemas:
     Response:
       type: object
+      description: 统一响应结构（HTTP 状态码恒为 200，业务状态看 code）
       properties:
         code:
           type: integer
-          description: 业务码 0成功
+          description: 业务响应码 0成功 400参数错误 401未登录或登录失效 403无权限 500业务失败 503依赖服务不可用
+          enum: [0, 400, 401, 403, 500, 503]
+          example: 0
         msg:
           type: string
-          description: 提示信息
+          description: 提示信息，失败时为具体原因
         data:
           description: 业务数据
 
@@ -424,6 +428,10 @@ components:
         avatar:
           type: string
           description: 头像文件地址（保存时转为相对路径）
+        gender:
+          type: integer
+          description: 性别：1男，2女，3未知；不传表示不修改
+          enum: [1, 2, 3]
       required: []
 
     AccountUpdateReq:
