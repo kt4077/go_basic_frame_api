@@ -4,12 +4,15 @@ import (
 	"errors"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"server_api/internal/admin/param"
 	"server_api/internal/admin/resp"
 	"server_api/internal/common/app"
 	"server_api/internal/common/enums"
 	"server_api/internal/common/model"
+	"server_api/pkg/dberror"
 	"server_api/pkg/pagination"
 )
 
@@ -25,52 +28,161 @@ func (l *SMSLogic) SaveConfig(c *gin.Context, req *param.SMSConfigSaveReq) (*res
 	if req.ID == 0 && req.Provider != enums.SMSProviderYunpian && req.AccessKeySecret == "" {
 		return nil, errors.New("新增配置必须填写访问密钥")
 	}
+	if req.IsDefault == enums.SMSDefaultYes && req.Status != enums.StatusEnabled {
+		return nil, errors.New("默认短信渠道必须为启用状态")
+	}
 	if req.ID == 0 {
-		item := model.SysSMSConfig{Name: req.Name, Provider: req.Provider, AccessKeyID: req.AccessKeyID, AccessKeySecret: req.AccessKeySecret, Endpoint: req.Endpoint, Status: req.Status, Remark: req.Remark}
-		if err := l.App.DB.Create(&item).Error; err != nil {
+		item := model.SysSMSConfig{Name: req.Name, Provider: req.Provider, AccessKeyID: req.AccessKeyID, AccessKeySecret: req.AccessKeySecret, Endpoint: req.Endpoint, IsDefault: req.IsDefault, Status: req.Status, Remark: req.Remark}
+		err := l.App.DB.Transaction(func(tx *gorm.DB) error {
+			var configs []model.SysSMSConfig
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Order("id ASC").Find(&configs).Error; err != nil {
+				return err
+			}
+			if len(configs) == 0 {
+				if item.Status != enums.StatusEnabled {
+					return errors.New("首个短信渠道必须为启用状态")
+				}
+				item.IsDefault = enums.SMSDefaultYes
+			}
+			if item.IsDefault == enums.SMSDefaultYes {
+				if err := clearOtherSMSDefaults(tx, 0); err != nil {
+					return err
+				}
+			}
+			return tx.Create(&item).Error
+		})
+		if err != nil {
+			if dberror.IsDuplicateKey(err) {
+				return nil, errors.New("默认短信渠道已被其他请求更新，请刷新后重试")
+			}
+			if err.Error() == "首个短信渠道必须为启用状态" {
+				return nil, err
+			}
 			return nil, errors.New("创建失败")
 		}
 		result := resp.NewSMSConfigItem(item)
 		return &result, nil
 	}
 	var item model.SysSMSConfig
-	if err := l.App.DB.First(&item, req.ID).Error; err != nil {
-		return nil, errors.New("短信配置不存在")
-	}
-	if req.Provider != enums.SMSProviderYunpian && req.AccessKeySecret == "" && item.AccessKeySecret == "" {
-		return nil, errors.New("当前短信服务商必须填写访问密钥")
-	}
-	updates := map[string]interface{}{"name": req.Name, "provider": req.Provider, "access_key_id": req.AccessKeyID, "endpoint": req.Endpoint, "status": req.Status, "remark": req.Remark}
-	if req.Provider == enums.SMSProviderYunpian {
-		updates["access_key_secret"] = ""
-	} else if req.AccessKeySecret != "" {
-		updates["access_key_secret"] = req.AccessKeySecret
-	}
-	if err := l.App.DB.Model(&item).Updates(updates).Error; err != nil {
+	err := l.App.DB.Transaction(func(tx *gorm.DB) error {
+		var configs []model.SysSMSConfig
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Order("id ASC").Find(&configs).Error; err != nil {
+			return err
+		}
+		found := false
+		for _, config := range configs {
+			if config.ID == req.ID {
+				item, found = config, true
+				break
+			}
+		}
+		if !found {
+			return errors.New("短信配置不存在")
+		}
+		if req.Provider != enums.SMSProviderYunpian && req.AccessKeySecret == "" && item.AccessKeySecret == "" {
+			return errors.New("当前短信服务商必须填写访问密钥")
+		}
+		if item.IsDefault == enums.SMSDefaultYes &&
+			(req.IsDefault != enums.SMSDefaultYes || req.Status != enums.StatusEnabled) {
+			return errors.New("默认短信渠道不能取消默认或停用，请先将其他启用渠道设为默认")
+		}
+		if req.IsDefault == enums.SMSDefaultYes {
+			if err := clearOtherSMSDefaults(tx, item.ID); err != nil {
+				return err
+			}
+		}
+		updates := map[string]interface{}{
+			"name": req.Name, "provider": req.Provider, "access_key_id": req.AccessKeyID,
+			"endpoint": req.Endpoint, "is_default": req.IsDefault, "status": req.Status, "remark": req.Remark,
+		}
+		if req.Provider == enums.SMSProviderYunpian {
+			updates["access_key_secret"] = ""
+		} else if req.AccessKeySecret != "" {
+			updates["access_key_secret"] = req.AccessKeySecret
+		}
+		return tx.Model(&item).Updates(updates).Error
+	})
+	if err != nil {
+		if dberror.IsDuplicateKey(err) {
+			return nil, errors.New("默认短信渠道已被其他请求更新，请刷新后重试")
+		}
+		for _, message := range []string{"短信配置不存在", "当前短信服务商必须填写访问密钥", "默认短信渠道不能取消默认或停用，请先将其他启用渠道设为默认"} {
+			if err.Error() == message {
+				return nil, err
+			}
+		}
 		return nil, errors.New("修改失败")
+	}
+	if err := l.App.DB.First(&item, req.ID).Error; err != nil {
+		return nil, errors.New("修改后读取配置失败")
 	}
 	result := resp.NewSMSConfigItem(item)
 	return &result, nil
 }
 
 func (l *SMSLogic) DeleteConfig(c *gin.Context, req *param.IDReq) error {
-	var count int64
-	l.App.DB.Model(&model.SysSMSSignature{}).Where("config_id = ?", req.ID).Count(&count)
-	if count > 0 {
-		return errors.New("该配置下存在签名，请先删除签名")
+	err := l.App.DB.Transaction(func(tx *gorm.DB) error {
+		var configs []model.SysSMSConfig
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Order("id ASC").Find(&configs).Error; err != nil {
+			return err
+		}
+		var config *model.SysSMSConfig
+		for index := range configs {
+			if configs[index].ID == req.ID {
+				config = &configs[index]
+				break
+			}
+		}
+		if config == nil {
+			return errors.New("短信配置不存在")
+		}
+		if config.IsDefault == enums.SMSDefaultYes {
+			return errors.New("默认短信渠道不允许删除，请先将其他启用渠道设为默认")
+		}
+		checks := []struct {
+			model   interface{}
+			message string
+		}{
+			{&model.SysSMSSignature{}, "该配置下存在签名，请先删除签名"},
+			{&model.SysSMSTemplate{}, "该配置下存在模板，请先删除模板"},
+			{&model.SysSMSSendLog{}, "该配置已有发送记录，不能删除"},
+		}
+		for _, check := range checks {
+			var count int64
+			if err := tx.Model(check.model).Where("config_id = ?", req.ID).Count(&count).Error; err != nil {
+				return err
+			}
+			if count > 0 {
+				return errors.New(check.message)
+			}
+		}
+		if result := tx.Delete(config); result.Error != nil || result.RowsAffected == 0 {
+			return errors.New("短信配置不存在或删除失败")
+		}
+		return nil
+	})
+	if err == nil {
+		return nil
 	}
-	l.App.DB.Model(&model.SysSMSTemplate{}).Where("config_id = ?", req.ID).Count(&count)
-	if count > 0 {
-		return errors.New("该配置下存在模板，请先删除模板")
+	for _, message := range []string{
+		"短信配置不存在", "默认短信渠道不允许删除，请先将其他启用渠道设为默认",
+		"该配置下存在签名，请先删除签名", "该配置下存在模板，请先删除模板",
+		"该配置已有发送记录，不能删除", "短信配置不存在或删除失败",
+	} {
+		if err.Error() == message {
+			return err
+		}
 	}
-	l.App.DB.Model(&model.SysSMSSendLog{}).Where("config_id = ?", req.ID).Count(&count)
-	if count > 0 {
-		return errors.New("该配置已有发送记录，不能删除")
+	return errors.New("删除失败")
+}
+
+// clearOtherSMSDefaults 保证未删除的短信配置中至多一个默认渠道。
+func clearOtherSMSDefaults(tx *gorm.DB, id uint) error {
+	query := tx.Model(&model.SysSMSConfig{}).Where("is_default = ?", enums.SMSDefaultYes)
+	if id > 0 {
+		query = query.Where("id != ?", id)
 	}
-	if result := l.App.DB.Delete(&model.SysSMSConfig{}, req.ID); result.Error != nil || result.RowsAffected == 0 {
-		return errors.New("短信配置不存在或删除失败")
-	}
-	return nil
+	return query.Update("is_default", enums.SMSDefaultNo).Error
 }
 
 func (l *SMSLogic) SignatureList(c *gin.Context) ([]resp.SMSSignatureItem, error) {

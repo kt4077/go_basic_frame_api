@@ -9,6 +9,12 @@ const (
 	SMSProviderYunpian = 5 // 云片
 )
 
+// 短信默认渠道标志。0 表示否，1 表示是。
+const (
+	SMSDefaultNo  = 0
+	SMSDefaultYes = 1
+)
+
 // 短信模板类型，枚举从 1 开始。
 const (
 	SMSTemplateVerifyCode = 1

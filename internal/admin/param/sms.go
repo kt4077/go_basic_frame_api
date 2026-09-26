@@ -7,6 +7,7 @@ type SMSConfigSaveReq struct {
 	AccessKeyID     string `json:"access_key_id" binding:"required" validate:"访问密钥ID" comment:"访问密钥ID"`
 	AccessKeySecret string `json:"access_key_secret" validate:"访问密钥Secret" comment:"访问密钥Secret"`
 	Endpoint        string `json:"endpoint" validate:"服务地址" comment:"服务地址"`
+	IsDefault       int    `json:"is_default" binding:"omitempty,oneof=1" validate:"是否默认渠道" comment:"是否默认渠道：0否，1是"`
 	Status          int    `json:"status" binding:"required,oneof=1 2" validate:"状态" comment:"状态"`
 	Remark          string `json:"remark" validate:"备注" comment:"备注"`
 }

@@ -93,6 +93,7 @@ type SMSConfigItem struct {
 	Provider    int    `json:"provider" comment:"短信服务商"`
 	AccessKeyID string `json:"access_key_id" comment:"访问密钥ID"`
 	Endpoint    string `json:"endpoint" comment:"服务地址"`
+	IsDefault   int    `json:"is_default" comment:"是否默认渠道：0否，1是"`
 	Status      int    `json:"status" comment:"状态"`
 	Remark      string `json:"remark" comment:"备注"`
 }
@@ -200,7 +201,7 @@ func NewStorageItem(v model.SysStorageConfig) StorageItem {
 	return StorageItem{BaseItem: base(v.Base), Name: v.Name, Channel: v.Channel, Params: v.Params, IsDefault: v.IsDefault, Status: v.Status, Sort: v.Sort, Remark: v.Remark}
 }
 func NewSMSConfigItem(v model.SysSMSConfig) SMSConfigItem {
-	return SMSConfigItem{BaseItem: base(v.Base), Name: v.Name, Provider: v.Provider, AccessKeyID: v.AccessKeyID, Endpoint: v.Endpoint, Status: v.Status, Remark: v.Remark}
+	return SMSConfigItem{BaseItem: base(v.Base), Name: v.Name, Provider: v.Provider, AccessKeyID: v.AccessKeyID, Endpoint: v.Endpoint, IsDefault: v.IsDefault, Status: v.Status, Remark: v.Remark}
 }
 func NewSMSSignatureItem(v model.SysSMSSignature) SMSSignatureItem {
 	return SMSSignatureItem{BaseItem: base(v.Base), ConfigID: v.ConfigID, Name: v.Name, SignCode: v.SignCode, Status: v.Status, Remark: v.Remark}

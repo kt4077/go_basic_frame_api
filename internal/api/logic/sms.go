@@ -4,10 +4,8 @@ package logic
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
-	"math/big"
 	"strings"
 	"time"
 
@@ -44,6 +42,10 @@ func (l *SmsLogic) SendSmsCode(c *gin.Context, req *param.SmsCodeReq) error {
 	if !mobilePattern.MatchString(req.Mobile) {
 		return errors.New("手机号格式不正确")
 	}
+	config, err := l.defaultSMSConfig(c)
+	if err != nil {
+		return err
+	}
 	ctx := c.Request.Context()
 	banKey := fmt.Sprintf("sms_code_ban:%d:%s", req.Scene, req.Mobile)
 	if exists, err := l.App.Redis.Exists(ctx, banKey).Result(); err != nil {
@@ -78,11 +80,11 @@ func (l *SmsLogic) SendSmsCode(c *gin.Context, req *param.SmsCodeReq) error {
 		return errors.New("验证码发送过于频繁，账号已被限制30分钟，请稍后再试")
 	}
 
-	code, err := randomCode()
+	code, err := sms.GenerateVerificationCode()
 	if err != nil {
 		return errors.New("验证码生成失败，请稍后重试")
 	}
-	if err := l.sendSms(c, req.Mobile, code); err != nil {
+	if err := l.sendSms(c, config, req.Mobile, code); err != nil {
 		return err
 	}
 	l.App.Redis.Set(ctx, fmt.Sprintf("sms_code:%d:%s", req.Scene, req.Mobile), code, smsCodeTTL)
@@ -100,11 +102,18 @@ func (l *SmsLogic) writeLimitLog(mobile, reason string) {
 }
 
 // sendSms 按当前短信配置读取签名与验证码模板并发送，发送结果写入短信发送记录。
-func (l *SmsLogic) sendSms(c *gin.Context, mobile, code string) error {
+func (l *SmsLogic) defaultSMSConfig(c *gin.Context) (*model.SysSMSConfig, error) {
 	var config model.SysSMSConfig
-	if err := l.App.DB.Where("status = ?", enums.StatusEnabled).Order("id ASC").First(&config).Error; err != nil {
-		return errors.New("短信配置不完整，请联系管理员")
+	if err := l.App.DB.WithContext(c.Request.Context()).
+		Where("status = ? AND is_default = ?", enums.StatusEnabled, enums.SMSDefaultYes).
+		First(&config).Error; err != nil {
+		return nil, errors.New("短信服务未开启，请联系管理员")
 	}
+	return &config, nil
+}
+
+// sendSms 使用管理端选定的启用默认渠道读取签名和验证码模板并发送。
+func (l *SmsLogic) sendSms(c *gin.Context, config *model.SysSMSConfig, mobile, code string) error {
 	var signature model.SysSMSSignature
 	if err := l.App.DB.Where("config_id = ? AND status = ? AND sign_code != ''", config.ID, enums.StatusEnabled).
 		Order("id ASC").First(&signature).Error; err != nil {
@@ -179,13 +188,4 @@ func (l *SmsLogic) VerifyCode(scene int, mobile, code string) error {
 	}
 	l.App.Redis.Del(ctx, codeKey, tryKey)
 	return nil
-}
-
-// randomCode 生成6位数字验证码。
-func randomCode() (string, error) {
-	n, err := rand.Int(rand.Reader, big.NewInt(1000000))
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%06d", n.Int64()), nil
 }
