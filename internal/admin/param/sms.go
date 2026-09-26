@@ -3,7 +3,7 @@ package param
 type SMSConfigSaveReq struct {
 	ID              uint   `json:"id" comment:"主键ID"`
 	Name            string `json:"name" binding:"required" comment:"配置名称"`
-	Provider        int    `json:"provider" binding:"required,oneof=1 2" comment:"短信服务商"`
+	Provider        int    `json:"provider" binding:"required,oneof=1 2 3 4 5" comment:"短信服务商：1阿里云、2腾讯云、3短信宝、4 SMS.cn、5云片"`
 	AccessKeyID     string `json:"access_key_id" binding:"required" comment:"访问密钥ID"`
 	AccessKeySecret string `json:"access_key_secret" comment:"访问密钥Secret"`
 	Endpoint        string `json:"endpoint" comment:"服务地址"`
@@ -15,7 +15,7 @@ type SMSSignatureSaveReq struct {
 	ID       uint   `json:"id" comment:"主键ID"`
 	ConfigID uint   `json:"config_id" binding:"required" comment:"短信配置ID"`
 	Name     string `json:"name" binding:"required" comment:"签名名称"`
-	SignCode string `json:"sign_code" comment:"平台签名编码"`
+	SignCode string `json:"sign_code" binding:"required" comment:"平台签名编码"`
 	Status   int    `json:"status" binding:"required,oneof=1 2" comment:"状态"`
 	Remark   string `json:"remark" comment:"备注"`
 }
@@ -24,9 +24,9 @@ type SMSTemplateSaveReq struct {
 	ID           uint   `json:"id" comment:"主键ID"`
 	ConfigID     uint   `json:"config_id" binding:"required" comment:"短信配置ID"`
 	Name         string `json:"name" binding:"required" comment:"模板名称"`
-	TemplateCode string `json:"template_code" binding:"required" comment:"平台模板编码"`
+	TemplateCode string `json:"template_code" comment:"平台模板编码；短信宝、云片可留空"`
 	Type         int    `json:"type" binding:"required,oneof=1 2 3" comment:"模板类型"`
-	Content      string `json:"content" comment:"模板内容"`
+	Content      string `json:"content" binding:"required" comment:"模板内容"`
 	Status       int    `json:"status" binding:"required,oneof=1 2" comment:"状态"`
 	Remark       string `json:"remark" comment:"备注"`
 }

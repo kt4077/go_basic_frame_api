@@ -21,12 +21,11 @@ const aliyunEndpoint = "https://dysmsapi.aliyuncs.com"
 
 // sendAliyun 通过阿里云短信 RPC 接口发送短信。
 // 签名方式为官方 RPC 风格 HMAC-SHA1，仅使用标准库实现。
-func sendAliyun(ctx context.Context, cfg Config, msg Message) error {
+func sendAliyun(ctx context.Context, cfg Config, msg Message) (*Result, error) {
 	params := map[string]string{
 		"Action":           "SendSms",
 		"Version":          "2017-05-25",
 		"AccessKeyId":      cfg.AccessKeyID,
-		"AccessKeySecret":  cfg.AccessKeySecret,
 		"SignName":         msg.SignName,
 		"TemplateCode":     msg.TemplateCode,
 		"PhoneNumbers":     msg.Phone,
@@ -42,21 +41,18 @@ func sendAliyun(ctx context.Context, cfg Config, msg Message) error {
 	signParams := aliyunSignParams(params)
 	params["Signature"] = aliyunSignature("GET&%2F&"+percentEncode(signParams), cfg.AccessKeySecret+"&")
 
-	endpoint := cfg.Endpoint
-	if endpoint == "" {
-		endpoint = aliyunEndpoint
-	}
-	if !strings.HasPrefix(endpoint, "http") {
-		endpoint = "https://" + endpoint
+	endpoint, err := resolveEndpoint(cfg.Endpoint, aliyunEndpoint)
+	if err != nil {
+		return nil, err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"?"+signParams+"&Signature="+url.QueryEscape(params["Signature"]), nil)
 	if err != nil {
-		return fmt.Errorf("构造短信请求失败: %w", err)
+		return nil, fmt.Errorf("构造短信请求失败: %w", err)
 	}
 	body, err := doRequest(ctx, req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var res struct {
@@ -65,12 +61,12 @@ func sendAliyun(ctx context.Context, cfg Config, msg Message) error {
 		RequestID string `json:"RequestId"`
 	}
 	if err := json.Unmarshal(body, &res); err != nil {
-		return fmt.Errorf("解析短信响应失败: %w", err)
+		return nil, fmt.Errorf("解析短信响应失败: %w", err)
 	}
 	if res.Code != "OK" {
-		return fmt.Errorf("短信发送失败: %s %s", res.Code, res.Message)
+		return nil, fmt.Errorf("短信发送失败: %s %s", res.Code, res.Message)
 	}
-	return nil
+	return &Result{}, nil
 }
 
 // aliyunTemplateParam 模板变量序列化为 {"code":"123456"} 形式，按 index 命名。
@@ -130,6 +126,9 @@ func doRequest(ctx context.Context, req *http.Request) ([]byte, error) {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return nil, errors.New("读取短信响应失败")
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("短信服务HTTP状态异常: %d", resp.StatusCode)
 	}
 	return body, nil
 }

@@ -8,6 +8,7 @@ import (
 	"server_api/internal/admin/param"
 	"server_api/internal/admin/resp"
 	"server_api/internal/common/app"
+	"server_api/internal/common/enums"
 	"server_api/internal/common/model"
 	"server_api/pkg/pagination"
 )
@@ -21,8 +22,8 @@ func (l *SMSLogic) ConfigList(c *gin.Context) ([]resp.SMSConfigItem, error) {
 }
 
 func (l *SMSLogic) SaveConfig(c *gin.Context, req *param.SMSConfigSaveReq) (*resp.SMSConfigItem, error) {
-	if req.ID == 0 && req.AccessKeySecret == "" {
-		return nil, errors.New("新增配置必须填写 AccessKey Secret")
+	if req.ID == 0 && req.Provider != enums.SMSProviderYunpian && req.AccessKeySecret == "" {
+		return nil, errors.New("新增配置必须填写访问密钥")
 	}
 	if req.ID == 0 {
 		item := model.SysSMSConfig{Name: req.Name, Provider: req.Provider, AccessKeyID: req.AccessKeyID, AccessKeySecret: req.AccessKeySecret, Endpoint: req.Endpoint, Status: req.Status, Remark: req.Remark}
@@ -36,8 +37,13 @@ func (l *SMSLogic) SaveConfig(c *gin.Context, req *param.SMSConfigSaveReq) (*res
 	if err := l.App.DB.First(&item, req.ID).Error; err != nil {
 		return nil, errors.New("短信配置不存在")
 	}
+	if req.Provider != enums.SMSProviderYunpian && req.AccessKeySecret == "" && item.AccessKeySecret == "" {
+		return nil, errors.New("当前短信服务商必须填写访问密钥")
+	}
 	updates := map[string]interface{}{"name": req.Name, "provider": req.Provider, "access_key_id": req.AccessKeyID, "endpoint": req.Endpoint, "status": req.Status, "remark": req.Remark}
-	if req.AccessKeySecret != "" {
+	if req.Provider == enums.SMSProviderYunpian {
+		updates["access_key_secret"] = ""
+	} else if req.AccessKeySecret != "" {
 		updates["access_key_secret"] = req.AccessKeySecret
 	}
 	if err := l.App.DB.Model(&item).Updates(updates).Error; err != nil {
@@ -116,6 +122,9 @@ func (l *SMSLogic) SaveTemplate(c *gin.Context, req *param.SMSTemplateSaveReq) (
 	var config model.SysSMSConfig
 	if err := l.App.DB.First(&config, req.ConfigID).Error; err != nil {
 		return nil, errors.New("短信开发配置不存在")
+	}
+	if req.TemplateCode == "" && config.Provider != enums.SMSProviderSMSBao && config.Provider != enums.SMSProviderYunpian {
+		return nil, errors.New("当前短信服务商必须填写平台模板编码")
 	}
 	item := model.SysSMSTemplate{ConfigID: req.ConfigID, Name: req.Name, TemplateCode: req.TemplateCode, Type: req.Type, Content: req.Content, Status: req.Status, Remark: req.Remark}
 	if req.ID == 0 {

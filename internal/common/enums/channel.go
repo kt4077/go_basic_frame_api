@@ -2,8 +2,11 @@ package enums
 
 // 短信服务商，枚举从 1 开始。
 const (
-	SMSProviderAliyun  = 1
-	SMSProviderTencent = 2
+	SMSProviderAliyun  = 1 // 阿里云短信
+	SMSProviderTencent = 2 // 腾讯云短信
+	SMSProviderSMSBao  = 3 // 短信宝
+	SMSProviderSMSCN   = 4 // SMS.cn
+	SMSProviderYunpian = 5 // 云片
 )
 
 // 短信模板类型，枚举从 1 开始。

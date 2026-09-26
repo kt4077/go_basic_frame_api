@@ -44,7 +44,7 @@ func (l *SmsLogic) SendSmsCode(c *gin.Context, req *param.SmsCodeReq) error {
 	if !mobilePattern.MatchString(req.Mobile) {
 		return errors.New("手机号格式不正确")
 	}
-	ctx := context.Background()
+	ctx := c.Request.Context()
 	banKey := fmt.Sprintf("sms_code_ban:%d:%s", req.Scene, req.Mobile)
 	if exists, err := l.App.Redis.Exists(ctx, banKey).Result(); err != nil {
 		return errors.New("验证码服务异常，请稍后重试")
@@ -117,7 +117,8 @@ func (l *SmsLogic) sendSms(c *gin.Context, mobile, code string) error {
 	}
 
 	sentAt := time.Now()
-	err := sms.Send(context.Background(), sms.Config{
+	content := fillTemplateContent(template.Content, code)
+	result, err := sms.Send(c.Request.Context(), sms.Config{
 		Provider:        config.Provider,
 		AccessKeyID:     config.AccessKeyID,
 		AccessKeySecret: config.AccessKeySecret,
@@ -127,6 +128,7 @@ func (l *SmsLogic) sendSms(c *gin.Context, mobile, code string) error {
 		SignName:     signature.SignCode,
 		TemplateCode: template.TemplateCode,
 		Params:       []string{code},
+		Content:      content,
 	})
 
 	status, message := enums.SMSSendSuccess, ""
@@ -135,8 +137,11 @@ func (l *SmsLogic) sendSms(c *gin.Context, mobile, code string) error {
 	}
 	sendLog := model.SysSMSSendLog{
 		ConfigID: config.ID, SignatureID: signature.ID, TemplateID: template.ID,
-		Mobile: mobile, Content: fillTemplateContent(template.Content, code),
+		Mobile: mobile, Content: content,
 		Status: status, ErrorMessage: message, SentAt: &sentAt,
+	}
+	if result != nil {
+		sendLog.ProviderMessageID = result.ProviderMessageID
 	}
 	_ = l.App.DB.Create(&sendLog).Error
 

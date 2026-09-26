@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -23,7 +24,7 @@ const tencentRegion = "ap-guangzhou"
 const tencentVersion = "2021-01-11"
 
 // sendTencent 通过腾讯云短信 v3 接口发送短信，使用官方 TC3-HMAC-SHA256 签名。
-func sendTencent(ctx context.Context, cfg Config, msg Message) error {
+func sendTencent(ctx context.Context, cfg Config, msg Message) (*Result, error) {
 	phone := "+86" + msg.Phone
 	payload := map[string]interface{}{
 		"PhoneNumberSet":   []string{phone},
@@ -34,31 +35,29 @@ func sendTencent(ctx context.Context, cfg Config, msg Message) error {
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return fmt.Errorf("构造短信请求失败: %w", err)
+		return nil, fmt.Errorf("构造短信请求失败: %w", err)
 	}
 
 	now := time.Now()
 	timestamp := now.Unix()
 	date := now.UTC().Format("2006-01-02")
-	endpoint := cfg.Endpoint
-	if endpoint == "" {
-		endpoint = tencentEndpoint
-	}
-	if !strings.HasPrefix(endpoint, "http") {
-		endpoint = "https://" + endpoint
-	}
-
-	authorization, err := tencentAuthorization(cfg.AccessKeySecret, date, string(body), timestamp)
+	endpoint, err := resolveEndpoint(cfg.Endpoint, tencentEndpoint)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	parsedEndpoint, _ := url.Parse(endpoint)
+
+	authorization, err := tencentAuthorization(cfg.AccessKeySecret, date, string(body), timestamp, parsedEndpoint.Host)
+	if err != nil {
+		return nil, err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(body)))
 	if err != nil {
-		return fmt.Errorf("构造短信请求失败: %w", err)
+		return nil, fmt.Errorf("构造短信请求失败: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
-	req.Header.Set("Host", strings.TrimPrefix(strings.TrimPrefix(endpoint, "https://"), "http://"))
+	req.Header.Set("Host", parsedEndpoint.Host)
 	req.Header.Set("X-TC-Action", "SendSms")
 	req.Header.Set("X-TC-Version", tencentVersion)
 	req.Header.Set("X-TC-Region", tencentRegion)
@@ -68,14 +67,15 @@ func sendTencent(ctx context.Context, cfg Config, msg Message) error {
 
 	respBody, err := doRequest(ctx, req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var res struct {
 		Response struct {
 			SendStatusSet []struct {
-				Code    string `json:"Code"`
-				Message string `json:"Message"`
+				Code     string `json:"Code"`
+				Message  string `json:"Message"`
+				SerialNo string `json:"SerialNo"`
 			} `json:"SendStatusSet"`
 			Error *struct {
 				Code    string `json:"Code"`
@@ -84,22 +84,22 @@ func sendTencent(ctx context.Context, cfg Config, msg Message) error {
 		} `json:"Response"`
 	}
 	if err := json.Unmarshal(respBody, &res); err != nil {
-		return fmt.Errorf("解析短信响应失败: %w", err)
+		return nil, fmt.Errorf("解析短信响应失败: %w", err)
 	}
 	if res.Response.Error != nil {
-		return fmt.Errorf("短信发送失败: %s %s", res.Response.Error.Code, res.Response.Error.Message)
+		return nil, fmt.Errorf("短信发送失败: %s %s", res.Response.Error.Code, res.Response.Error.Message)
 	}
 	if len(res.Response.SendStatusSet) == 0 {
-		return errors.New("短信发送失败: 响应为空")
+		return nil, errors.New("短信发送失败: 响应为空")
 	}
 	if status := res.Response.SendStatusSet[0]; status.Code != "Ok" {
-		return fmt.Errorf("短信发送失败: %s %s", status.Code, status.Message)
+		return nil, fmt.Errorf("短信发送失败: %s %s", status.Code, status.Message)
 	}
-	return nil
+	return &Result{ProviderMessageID: res.Response.SendStatusSet[0].SerialNo}, nil
 }
 
 // tencentAuthorization 计算 TC3-HMAC-SHA256 签名。
-func tencentAuthorization(secret, date, body string, timestamp int64) (string, error) {
+func tencentAuthorization(secret, date, body string, timestamp int64, host string) (string, error) {
 	hash := func(data []byte) []byte {
 		sum := sha256.Sum256(data)
 		return sum[:]
@@ -111,7 +111,7 @@ func tencentAuthorization(secret, date, body string, timestamp int64) (string, e
 	}
 
 	canonicalRequest := "POST\n/\n\ncontent-type:application/json; charset=utf-8\nhost:" +
-		tencentEndpoint[len("https://"):] + "\n\ncontent-type;host\n" + hex.EncodeToString(hash([]byte(body)))
+		host + "\n\ncontent-type;host\n" + hex.EncodeToString(hash([]byte(body)))
 	stringToSign := "TC3-HMAC-SHA256\n" +
 		fmt.Sprintf("%d\n", timestamp) +
 		date + "/" + tencentRegion + "/sms/tc3_request\n" +
