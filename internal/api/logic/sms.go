@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -126,7 +125,7 @@ func (l *SmsLogic) sendSms(c *gin.Context, config *model.SysSMSConfig, mobile, c
 	}
 
 	sentAt := time.Now()
-	content := fillTemplateContent(template.Content, code)
+	content := sms.FillVerificationCode(template.Content, code)
 	result, err := sms.Send(c.Request.Context(), sms.Config{
 		Provider:        config.Provider,
 		AccessKeyID:     config.AccessKeyID,
@@ -158,14 +157,6 @@ func (l *SmsLogic) sendSms(c *gin.Context, config *model.SysSMSConfig, mobile, c
 		return errors.New("短信发送失败，请稍后重试")
 	}
 	return nil
-}
-
-// fillTemplateContent 尽力将验证码填入模板内容，用于发送记录展示。
-func fillTemplateContent(content, code string) string {
-	for _, placeholder := range []string{"${code}", "{1}", "{code}", "#{code}"} {
-		content = strings.ReplaceAll(content, placeholder, code)
-	}
-	return content
 }
 
 // VerifyCode 校验并消费短信验证码；错误次数超限时验证码立即作废。

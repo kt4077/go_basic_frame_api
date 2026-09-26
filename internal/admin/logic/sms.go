@@ -2,6 +2,8 @@ package logic
 
 import (
 	"errors"
+	"fmt"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -14,6 +16,7 @@ import (
 	"server_api/internal/common/model"
 	"server_api/pkg/dberror"
 	"server_api/pkg/pagination"
+	"server_api/pkg/sms"
 )
 
 type SMSLogic struct{ App *app.App }
@@ -118,6 +121,72 @@ func (l *SMSLogic) SaveConfig(c *gin.Context, req *param.SMSConfigSaveReq) (*res
 	}
 	result := resp.NewSMSConfigItem(item)
 	return &result, nil
+}
+
+// TestConfig 使用指定渠道及其启用的签名、验证码模板发送测试短信。
+// 管理员显式测试不受默认渠道和启用状态限制，但同一配置、手机号一分钟内只能测试一次。
+func (l *SMSLogic) TestConfig(c *gin.Context, req *param.SMSConfigTestReq) (*resp.SMSConfigTestRes, error) {
+	ctx := c.Request.Context()
+	var config model.SysSMSConfig
+	if err := l.App.DB.WithContext(ctx).First(&config, req.ConfigID).Error; err != nil {
+		return nil, errors.New("短信配置不存在")
+	}
+
+	var signature model.SysSMSSignature
+	if err := l.App.DB.WithContext(ctx).
+		Where("config_id = ? AND status = ? AND sign_code != ''", config.ID, enums.StatusEnabled).
+		Order("id ASC").First(&signature).Error; err != nil {
+		return nil, errors.New("该渠道未配置启用的短信签名，请先维护签名后再测试")
+	}
+	var template model.SysSMSTemplate
+	if err := l.App.DB.WithContext(ctx).
+		Where("config_id = ? AND status = ? AND type = ?", config.ID, enums.StatusEnabled, enums.SMSTemplateVerifyCode).
+		Order("id ASC").First(&template).Error; err != nil {
+		return nil, errors.New("该渠道未配置启用的验证码模板，请先维护模板后再测试")
+	}
+
+	limitKey := fmt.Sprintf("admin:sms_config_test:%d:%s", config.ID, req.Mobile)
+	allowed, err := l.App.Redis.SetNX(ctx, limitKey, 1, time.Minute).Result()
+	if err != nil {
+		return nil, errors.New("短信测试服务异常，请稍后重试")
+	}
+	if !allowed {
+		return nil, errors.New("测试短信发送过于频繁，同一渠道和手机号每分钟只能测试一次")
+	}
+
+	code, err := sms.GenerateVerificationCode()
+	if err != nil {
+		_ = l.App.Redis.Del(ctx, limitKey).Err()
+		return nil, errors.New("测试验证码生成失败，请稍后重试")
+	}
+	content := sms.FillVerificationCode(template.Content, code)
+	sentAt := time.Now()
+	result, sendErr := sms.Send(ctx, sms.Config{
+		Provider:        config.Provider,
+		AccessKeyID:     config.AccessKeyID,
+		AccessKeySecret: config.AccessKeySecret,
+		Endpoint:        config.Endpoint,
+	}, sms.Message{
+		Phone: req.Mobile, SignName: signature.SignCode, TemplateCode: template.TemplateCode,
+		Params: []string{code}, Content: content,
+	})
+
+	status, errorMessage, providerMessageID := enums.SMSSendSuccess, "", ""
+	if sendErr != nil {
+		status, errorMessage = enums.SMSSendFailed, sendErr.Error()
+	}
+	if result != nil {
+		providerMessageID = result.ProviderMessageID
+	}
+	_ = l.App.DB.WithContext(ctx).Create(&model.SysSMSSendLog{
+		ConfigID: config.ID, SignatureID: signature.ID, TemplateID: template.ID,
+		Mobile: req.Mobile, Content: content, Status: status,
+		ProviderMessageID: providerMessageID, ErrorMessage: errorMessage, SentAt: &sentAt,
+	}).Error
+	if sendErr != nil {
+		return nil, fmt.Errorf("测试短信发送失败：%w", sendErr)
+	}
+	return &resp.SMSConfigTestRes{ProviderMessageID: providerMessageID}, nil
 }
 
 func (l *SMSLogic) DeleteConfig(c *gin.Context, req *param.IDReq) error {

@@ -34,6 +34,16 @@ func (h *SMSController) SaveConfig(c *gin.Context) {
 	respond(c, result, err)
 }
 
+func (h *SMSController) TestConfig(c *gin.Context) {
+	var req param.SMSConfigTestReq
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
+		return
+	}
+	result, err := h.Logic.TestConfig(c, &req)
+	respond(c, result, err)
+}
+
 func (h *SMSController) SaveSignature(c *gin.Context) {
 	var req param.SMSSignatureSaveReq
 	if err := requestvalidate.Bind(c, &req); err != nil {

@@ -110,6 +110,7 @@ func AdminRoutes(application *app.App, pluginRegistry *commonplugin.Registry) (*
 		// 短信配置：开发信息、签名、模板、发送记录
 		perm.GET("/sms/config/list", smsC.ConfigList)
 		perm.POST("/sms/config/save", smsC.SaveConfig)
+		perm.POST("/sms/config/test", smsC.TestConfig)
 		perm.POST("/sms/config/delete", smsC.DeleteConfig)
 		perm.GET("/sms/signature/list", smsC.SignatureList)
 		perm.POST("/sms/signature/save", smsC.SaveSignature)

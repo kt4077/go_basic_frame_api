@@ -154,6 +154,10 @@ func validationMessage(semantic string, fieldError playground.FieldError) string
 		return semantic + "必须是有效的URL地址"
 	case "alphanum":
 		return semantic + "只能包含字母和数字"
+	case "numeric":
+		return semantic + "只能包含数字"
+	case "startswith":
+		return semantic + "格式不正确"
 	case "len":
 		return semantic + "长度必须为" + fieldError.Param()
 	case "min":

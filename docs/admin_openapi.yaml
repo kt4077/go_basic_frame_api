@@ -1402,6 +1402,34 @@ paths:
                       data:
                         $ref: '#/components/schemas/SMSConfigItem'
 
+  /admin/sms/config/test:
+    post:
+      tags: [短信配置]
+      summary: 发送短信渠道测试验证码
+      description: 使用指定配置及其第一条启用签名和验证码模板发送测试短信；管理端显式测试不要求该渠道为默认或启用。同一配置和手机号每分钟只能测试一次，发送结果写入短信发送记录。
+      operationId: adminSMSTestConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SMSConfigTestReq'
+            example:
+              config_id: 1
+              mobile: '13800000000'
+      responses:
+        '200':
+          description: 测试短信发送成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SMSConfigTestRes'
+
   /admin/sms/config/delete:
     post:
       tags: [短信配置]
@@ -3160,6 +3188,27 @@ components:
           type: string
           description: 备注
       required: [name, provider, access_key_id, status]
+
+    SMSConfigTestReq:
+      type: object
+      description: 短信渠道测试参数
+      properties:
+        config_id:
+          type: integer
+          description: 短信配置ID
+        mobile:
+          type: string
+          description: 接收测试验证码的中国大陆手机号
+          example: '13800000000'
+      required: [config_id, mobile]
+
+    SMSConfigTestRes:
+      type: object
+      description: 短信渠道测试结果
+      properties:
+        provider_message_id:
+          type: string
+          description: 短信服务商消息ID
 
     SMSSignatureSaveReq:
       type: object

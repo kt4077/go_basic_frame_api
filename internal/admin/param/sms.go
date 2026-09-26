@@ -12,6 +12,12 @@ type SMSConfigSaveReq struct {
 	Remark          string `json:"remark" validate:"备注" comment:"备注"`
 }
 
+// SMSConfigTestReq 短信渠道测试请求。
+type SMSConfigTestReq struct {
+	ConfigID uint   `json:"config_id" binding:"required" validate:"短信配置ID" comment:"短信配置ID"`
+	Mobile   string `json:"mobile" binding:"required,len=11,numeric,startswith=1" validate:"测试手机号" comment:"接收测试验证码的中国大陆手机号"`
+}
+
 type SMSSignatureSaveReq struct {
 	ID       uint   `json:"id" validate:"主键ID" comment:"主键ID"`
 	ConfigID uint   `json:"config_id" binding:"required" validate:"短信配置ID" comment:"短信配置ID"`
