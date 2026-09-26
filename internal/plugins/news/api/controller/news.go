@@ -5,6 +5,7 @@ import (
 	"server_api/internal/plugins/news/api/logic"
 	"server_api/internal/plugins/news/api/param"
 	"server_api/pkg/response"
+	requestvalidate "server_api/pkg/validate"
 )
 
 // NewsController 用户端新闻控制器。
@@ -20,8 +21,8 @@ func (h *NewsController) Categories(c *gin.Context) {
 }
 func (h *NewsController) Articles(c *gin.Context) {
 	var req param.ArticleListReq
-	if c.ShouldBindQuery(&req) != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	result, err := h.Logic.Articles(c, &req)
@@ -33,8 +34,8 @@ func (h *NewsController) Articles(c *gin.Context) {
 }
 func (h *NewsController) Article(c *gin.Context) {
 	var req param.ArticleDetailReq
-	if c.ShouldBindUri(&req) != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误")
+	if err := requestvalidate.BindURI(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	result, err := h.Logic.Article(c, &req)

@@ -7,6 +7,7 @@ import (
 	"server_api/internal/api/logic"
 	"server_api/internal/api/param"
 	"server_api/pkg/response"
+	requestvalidate "server_api/pkg/validate"
 )
 
 type SmsController struct{ Logic *logic.SmsLogic }
@@ -14,8 +15,8 @@ type SmsController struct{ Logic *logic.SmsLogic }
 // SendCode 发送短信验证码。
 func (h *SmsController) SendCode(c *gin.Context) {
 	var req param.SmsCodeReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	if err := h.Logic.SendSmsCode(c, &req); err != nil {

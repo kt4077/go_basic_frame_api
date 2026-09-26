@@ -3,6 +3,6 @@ package param
 
 // SmsCodeReq 发送短信验证码。
 type SmsCodeReq struct {
-	Mobile string `json:"mobile" binding:"required" comment:"手机号"`
-	Scene  int    `json:"scene" binding:"required,oneof=1 2 3" comment:"验证码场景：1登录，2注册，3换绑手机号"`
+	Mobile string `json:"mobile" binding:"required" validate:"手机号" comment:"手机号"`
+	Scene  int    `json:"scene" binding:"required,oneof=1 2 3" validate:"验证码场景" comment:"验证码场景：1登录，2注册，3换绑手机号"`
 }

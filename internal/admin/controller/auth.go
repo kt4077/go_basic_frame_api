@@ -7,6 +7,7 @@ import (
 	"server_api/internal/admin/logic"
 	"server_api/internal/admin/param"
 	"server_api/pkg/response"
+	requestvalidate "server_api/pkg/validate"
 )
 
 type AuthController struct{ Logic *logic.AuthLogic }
@@ -14,8 +15,8 @@ type AuthController struct{ Logic *logic.AuthLogic }
 // Login 管理端登录。
 func (h *AuthController) Login(c *gin.Context) {
 	var req param.LoginReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "用户名和密码不能为空")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	res, err := h.Logic.Login(c, &req)
@@ -48,8 +49,8 @@ func (h *AuthController) Me(c *gin.Context) {
 // UpdateProfile 修改当前管理员个人资料。
 func (h *AuthController) UpdateProfile(c *gin.Context) {
 	var req param.ProfileUpdateReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "个人资料参数错误")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	res, err := h.Logic.UpdateProfile(c, &req)
@@ -63,8 +64,8 @@ func (h *AuthController) UpdateProfile(c *gin.Context) {
 // UpdateAvatar 修改当前管理员头像。
 func (h *AuthController) UpdateAvatar(c *gin.Context) {
 	var req param.AvatarUpdateReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "头像参数错误")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	res, err := h.Logic.UpdateAvatar(c, &req)
@@ -88,8 +89,8 @@ func (h *AuthController) GetRouters(c *gin.Context) {
 // ChangePassword 修改自己的密码。
 func (h *AuthController) ChangePassword(c *gin.Context) {
 	var req param.ChangePasswordReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误，新密码至少6位")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	if err := h.Logic.ChangePassword(c, &req); err != nil {

@@ -6,6 +6,7 @@ import (
 	"server_api/internal/admin/logic"
 	"server_api/internal/admin/param"
 	"server_api/pkg/response"
+	requestvalidate "server_api/pkg/validate"
 )
 
 type StorageController struct{ Logic *logic.StorageLogic }
@@ -23,8 +24,8 @@ func (h *StorageController) List(c *gin.Context) {
 // Create 新增存储渠道。
 func (h *StorageController) Create(c *gin.Context) {
 	var req param.StorageSaveReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	res, err := h.Logic.Create(c, &req)
@@ -38,8 +39,12 @@ func (h *StorageController) Create(c *gin.Context) {
 // Update 修改存储渠道。
 func (h *StorageController) Update(c *gin.Context) {
 	var req param.StorageSaveReq
-	if err := c.ShouldBindJSON(&req); err != nil || req.ID == 0 {
-		response.Fail(c, response.CodeErrParams, "参数错误，缺少ID")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
+		return
+	}
+	if req.ID == 0 {
+		response.Fail(c, response.CodeErrParams, "主键ID不能为空")
 		return
 	}
 	res, err := h.Logic.Update(c, &req)
@@ -53,8 +58,8 @@ func (h *StorageController) Update(c *gin.Context) {
 // SetDefault 设为默认渠道。
 func (h *StorageController) SetDefault(c *gin.Context) {
 	var req param.IDReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误，缺少ID")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	if err := h.Logic.SetDefault(c, &req); err != nil {
@@ -67,8 +72,8 @@ func (h *StorageController) SetDefault(c *gin.Context) {
 // Delete 删除存储渠道。
 func (h *StorageController) Delete(c *gin.Context) {
 	var req param.IDReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误，缺少ID")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	if err := h.Logic.Delete(c, &req); err != nil {

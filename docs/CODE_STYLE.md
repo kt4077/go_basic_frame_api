@@ -54,7 +54,7 @@ go_backend_frame/
 
 核心约定：
 
-- controller 方法只做三件事：`ShouldBind` → 调 logic → `response.OK/Fail`。
+- controller 方法只做三件事：`requestvalidate.Bind` → 调 logic → `response.OK/Fail`，禁止直接调用 Gin `ShouldBind*`。
 - controller 调用 logic **必须传入 `*gin.Context`**；登录信息（claims）、IP、User-Agent 统一在 logic 层通过 `auth.CtxClaims(c)`、`c.ClientIP()`、`c.GetHeader("User-Agent")` 获取。
 - `param`、`resp` 必须按功能拆分为多个文件（如 `user.go`、`menu.go`），**禁止**合并成单个 `param.go` / `resp.go`。
 - 两端共用能力放 `internal/common/<功能>`；只属于一端的能力放回该端目录；无业务归属的工具放 `pkg/<功能>`。
@@ -73,23 +73,26 @@ go_backend_frame/
 
 - JSON 字段统一 `snake_case`：`json:"parent_id"`。
 - 查询参数接口（GET）字段同时声明 `form:"..."`；请求体接口（POST）只需 `json:"..."`。
-- 校验使用 `binding`：`required`、`min=6`、`oneof=1 2`、`omitempty,max=1024`、`url`、`email`。
+- 校验规则使用 `binding`：`required`、`min=6`、`oneof=1 2`、`omitempty,max=1024`、`url`、`email`。
+- 每个请求字段必须增加 `validate:"字段语义"`，用于生成面向用户的校验错误；语义从 `comment` 提取核心名称，不包含枚举或补充说明。
 - 每个字段写 `comment:"..."` 中文注释，作为接口文档与前端类型的事实来源。
 
 ```go
 type UserSaveReq struct {
-    ID       uint   `json:"id" comment:"主键ID"`
-    Username string `json:"username" comment:"登录账号"`
-    Password string `json:"password" comment:"登录密码"`
-    RoleIDs  []uint `json:"role_ids" comment:"角色ID列表"`
+    ID       uint   `json:"id" validate:"主键ID" comment:"主键ID"`
+    Username string `json:"username" binding:"required" validate:"登录账号" comment:"登录账号"`
+    Password string `json:"password" binding:"required,min=6" validate:"登录密码" comment:"登录密码"`
+    RoleIDs  []uint `json:"role_ids" validate:"角色ID列表" comment:"角色ID列表"`
 }
 ```
+
+统一验证器、错误文案和自定义规则注册方式见 [请求参数验证](request-validation.md)。
 
 ### 2.4 响应与错误
 
 - 统一使用 `pkg/response`：`response.OK(c, data)` 与 `response.Fail(c, code, msg)`，HTTP 状态码恒为 200。
 - 业务码：`0` 成功、`400` 参数错误、`401` 未登录/登录失效、`403` 无权限、`500` 业务失败、`503` 依赖不可用。
-- 参数绑定失败统一返回 `CodeErrParams`，不要透传 Gin 原始错误。
+- 参数绑定失败统一返回 `CodeErrParams` 和 `pkg/validate` 生成的错误，不要透传 Gin 或 validator 原始错误。
 - 数据库错误使用 `pkg/dberror` 识别（如 `IsDuplicateKey` → 重复提示），不要直接把驱动错误返回前端。
 - 无返回数据的操作接口（删除、设置默认、踢下线）使用 `response.OK(c, nil)`。
 

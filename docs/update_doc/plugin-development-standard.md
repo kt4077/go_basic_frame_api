@@ -338,13 +338,13 @@ Model 只映射当前表字段，不定义分类、作者等关联对象。关�
 ```go
 // ArticleCreate 创建文章参数。
 type ArticleCreate struct {
-    CategoryID uint64 `json:"category_id" binding:"required" comment:"分类ID"`
-    Title      string `json:"title" binding:"required,max=200" comment:"文章标题"`
-    Content    string `json:"content" binding:"required" comment:"文章内容"`
+    CategoryID uint64 `json:"category_id" binding:"required" validate:"分类ID" comment:"分类ID"`
+    Title      string `json:"title" binding:"required,max=200" validate:"文章标题" comment:"文章标题"`
+    Content    string `json:"content" binding:"required" validate:"文章内容" comment:"文章内容"`
 }
 ```
 
-- 必须定义 JSON、校验和 comment Tag；
+- 必须定义 JSON/form/uri、binding 校验、`validate:"字段语义"` 和 comment Tag；
 - 参数校验在进入 Logic 前完成；
 - ID、状态、分页大小等必须校验边界；
 - 不允许客户端提交创建人、租户、权限范围等应由服务端确定的字段。
@@ -383,7 +383,8 @@ type ArticleDetail struct {
 
 ### 6.4 Controller
 
-- 只完成参数绑定、上下文信息获取、Logic 调用和统一响应；
+- 只通过 `pkg/validate` 完成参数绑定、上下文信息获取、Logic 调用和统一响应，禁止直接调用 Gin `ShouldBind*`；
+- 参数不通过时返回统一验证器生成的字段语义错误，不得用“参数错误”覆盖；
 - 不直接操作数据库；
 - 不在 Controller 中编写复杂业务判断；
 - 所有接口沿用项目现有响应结构和错误处理方式；

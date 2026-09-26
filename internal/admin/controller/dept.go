@@ -6,6 +6,7 @@ import (
 	"server_api/internal/admin/logic"
 	"server_api/internal/admin/param"
 	"server_api/pkg/response"
+	requestvalidate "server_api/pkg/validate"
 )
 
 type DeptController struct{ Logic *logic.DeptLogic }
@@ -23,8 +24,8 @@ func (h *DeptController) Tree(c *gin.Context) {
 // Create 新增部门。
 func (h *DeptController) Create(c *gin.Context) {
 	var req param.DeptSaveReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	res, err := h.Logic.Create(c, &req)
@@ -38,8 +39,8 @@ func (h *DeptController) Create(c *gin.Context) {
 // Update 修改部门。
 func (h *DeptController) Update(c *gin.Context) {
 	var req param.DeptSaveReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	res, err := h.Logic.Update(c, &req)
@@ -53,8 +54,8 @@ func (h *DeptController) Update(c *gin.Context) {
 // Delete 删除部门。
 func (h *DeptController) Delete(c *gin.Context) {
 	var req param.IDReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误，缺少ID")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	if err := h.Logic.Delete(c, &req); err != nil {

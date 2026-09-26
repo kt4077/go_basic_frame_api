@@ -6,6 +6,7 @@ import (
 	"server_api/internal/admin/logic"
 	"server_api/internal/admin/param"
 	"server_api/pkg/response"
+	requestvalidate "server_api/pkg/validate"
 )
 
 type SMSController struct{ Logic *logic.SMSLogic }
@@ -25,8 +26,8 @@ func (h *SMSController) TemplateList(c *gin.Context) {
 
 func (h *SMSController) SaveConfig(c *gin.Context) {
 	var req param.SMSConfigSaveReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	result, err := h.Logic.SaveConfig(c, &req)
@@ -35,8 +36,8 @@ func (h *SMSController) SaveConfig(c *gin.Context) {
 
 func (h *SMSController) SaveSignature(c *gin.Context) {
 	var req param.SMSSignatureSaveReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	result, err := h.Logic.SaveSignature(c, &req)
@@ -45,8 +46,8 @@ func (h *SMSController) SaveSignature(c *gin.Context) {
 
 func (h *SMSController) SaveTemplate(c *gin.Context) {
 	var req param.SMSTemplateSaveReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	result, err := h.Logic.SaveTemplate(c, &req)
@@ -59,8 +60,8 @@ func (h *SMSController) DeleteTemplate(c *gin.Context)  { h.delete(c, h.Logic.De
 
 func (h *SMSController) delete(c *gin.Context, fn func(*gin.Context, *param.IDReq) error) {
 	var req param.IDReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误，缺少ID")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	if err := fn(c, &req); err != nil {
@@ -72,8 +73,8 @@ func (h *SMSController) delete(c *gin.Context, fn func(*gin.Context, *param.IDRe
 
 func (h *SMSController) LogList(c *gin.Context) {
 	var req param.SMSLogListReq
-	if err := c.ShouldBindQuery(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	result, err := h.Logic.LogList(c, &req)

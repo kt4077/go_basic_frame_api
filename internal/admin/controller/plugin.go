@@ -6,6 +6,7 @@ import (
 	"server_api/internal/admin/logic"
 	"server_api/internal/admin/param"
 	"server_api/pkg/response"
+	requestvalidate "server_api/pkg/validate"
 )
 
 // PluginController 插件管理控制器。
@@ -14,8 +15,8 @@ type PluginController struct{ Logic *logic.PluginLogic }
 // List 插件分页列表。
 func (h *PluginController) List(c *gin.Context) {
 	var req param.PluginListReq
-	if err := c.ShouldBindQuery(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	res, err := h.Logic.List(c, &req)
@@ -29,8 +30,8 @@ func (h *PluginController) List(c *gin.Context) {
 // Detail 插件详情和迁移记录。
 func (h *PluginController) Detail(c *gin.Context) {
 	var req param.PluginIDReq
-	if err := c.ShouldBindQuery(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误，缺少插件标识")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	res, err := h.Logic.Detail(c, &req)
@@ -44,8 +45,8 @@ func (h *PluginController) Detail(c *gin.Context) {
 // UpdateStatus 启用或停用插件，修改后需重启服务生效。
 func (h *PluginController) UpdateStatus(c *gin.Context) {
 	var req param.PluginStatusReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	if err := h.Logic.UpdateStatus(c, &req); err != nil {
@@ -58,8 +59,8 @@ func (h *PluginController) UpdateStatus(c *gin.Context) {
 // UpdateInfo 修改插件作者、主页和描述。
 func (h *PluginController) UpdateInfo(c *gin.Context) {
 	var req param.PluginInfoUpdateReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误，请检查插件地址格式和字段长度")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	if err := h.Logic.UpdateInfo(c, &req); err != nil {

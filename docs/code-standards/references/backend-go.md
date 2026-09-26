@@ -27,7 +27,7 @@ docs/       接口文档与规范
 
 ## 分层职责
 
-- controller：只做 `ShouldBind*` → 调 logic → `response.OK/Fail`。
+- controller：只做 `requestvalidate.Bind` → 调 logic → `response.OK/Fail`，禁止直接调用 Gin `ShouldBind*`。
 - logic：业务规则、事务、缓存维护；方法签名统一 `func (l *XxxLogic) Action(c *gin.Context, req *param.XxxReq) (*resp.XxxRes, error)`。
 - param / resp：结构体定义，**按功能拆分文件**（`user.go`、`menu.go`…），禁止 `param.go` 聚合。
 - model：仅放 GORM 模型与表名，不放响应结构。
@@ -40,9 +40,9 @@ docs/       接口文档与规范
 package param
 
 type UserSaveReq struct {
-    ID       uint   `json:"id" comment:"主键ID"`
-    Username string `json:"username" comment:"登录账号"`
-    Status   int    `json:"status" binding:"omitempty,oneof=1 2" comment:"状态"`
+    ID       uint   `json:"id" validate:"主键ID" comment:"主键ID"`
+    Username string `json:"username" binding:"required" validate:"登录账号" comment:"登录账号"`
+    Status   int    `json:"status" binding:"omitempty,oneof=1 2" validate:"状态" comment:"状态"`
 }
 ```
 
@@ -50,9 +50,9 @@ type UserSaveReq struct {
 
 ```go
 type UserListReq struct {
-    Keyword  string `form:"keyword" comment:"搜索关键字"`
-    Page     int    `form:"page" comment:"页码"`
-    PageSize int    `form:"page_size" comment:"每页数量"`
+    Keyword  string `form:"keyword" validate:"搜索关键字" comment:"搜索关键字"`
+    Page     int    `form:"page" validate:"页码" comment:"页码"`
+    PageSize int    `form:"page_size" validate:"每页数量" comment:"每页数量"`
 }
 ```
 
@@ -86,8 +86,8 @@ func (l *UserLogic) Create(c *gin.Context, req *param.UserSaveReq) (*resp.UserIt
 ```go
 func (h *UserController) Create(c *gin.Context) {
     var req param.UserSaveReq
-    if err := c.ShouldBindJSON(&req); err != nil {
-        response.Fail(c, response.CodeErrParams, "参数错误")
+    if err := requestvalidate.Bind(c, &req); err != nil {
+        response.Fail(c, response.CodeErrParams, err.Error())
         return
     }
     res, err := h.Logic.Create(c, &req)

@@ -5,6 +5,7 @@ import (
 	"server_api/internal/plugins/news/admin/logic"
 	"server_api/internal/plugins/news/admin/param"
 	"server_api/pkg/response"
+	requestvalidate "server_api/pkg/validate"
 )
 
 // ArticleController 新闻文章管理控制器。
@@ -12,8 +13,8 @@ type ArticleController struct{ Logic *logic.ArticleLogic }
 
 func (h *ArticleController) List(c *gin.Context) {
 	var req param.ArticleListReq
-	if c.ShouldBindQuery(&req) != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	result, err := h.Logic.List(c, &req)
@@ -25,8 +26,8 @@ func (h *ArticleController) List(c *gin.Context) {
 }
 func (h *ArticleController) Detail(c *gin.Context) {
 	var req param.ArticleIDReq
-	if c.ShouldBindQuery(&req) != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	result, err := h.Logic.Detail(c, &req)
@@ -38,8 +39,8 @@ func (h *ArticleController) Detail(c *gin.Context) {
 }
 func (h *ArticleController) Save(c *gin.Context) {
 	var req param.ArticleSaveReq
-	if c.ShouldBindJSON(&req) != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	result, err := h.Logic.Save(c, &req)
@@ -51,8 +52,8 @@ func (h *ArticleController) Save(c *gin.Context) {
 }
 func (h *ArticleController) UpdateStatus(c *gin.Context) {
 	var req param.ArticleStatusReq
-	if c.ShouldBindJSON(&req) != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	if err := h.Logic.UpdateStatus(c, &req); err != nil {
@@ -63,8 +64,8 @@ func (h *ArticleController) UpdateStatus(c *gin.Context) {
 }
 func (h *ArticleController) Delete(c *gin.Context) {
 	var req param.ArticleIDReq
-	if c.ShouldBindJSON(&req) != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	if err := h.Logic.Delete(c, &req); err != nil {
