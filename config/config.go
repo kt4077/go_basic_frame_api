@@ -9,11 +9,12 @@ import (
 )
 
 type Config struct {
-	Server ServerConfig `yaml:"server"`
-	Mysql  MysqlConfig  `yaml:"mysql"`
-	Redis  RedisConfig  `yaml:"redis"`
-	Jwt    JwtConfig    `yaml:"jwt"`
-	Log    LogConfig    `yaml:"log"`
+	Version string       `yaml:"version"`
+	Server  ServerConfig `yaml:"server"`
+	Mysql   MysqlConfig  `yaml:"mysql"`
+	Redis   RedisConfig  `yaml:"redis"`
+	Jwt     JwtConfig    `yaml:"jwt"`
+	Log     LogConfig    `yaml:"log"`
 }
 
 type ServerConfig struct {
@@ -68,6 +69,9 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
 	}
 	setDefaults(cfg)
+	if cfg.Version == "" {
+		return nil, fmt.Errorf("version 不能为空，请在配置文件中设置系统版本号")
+	}
 	if cfg.Server.AdminAddr == "" || cfg.Server.ApiAddr == "" {
 		return nil, fmt.Errorf("server.admin_addr 和 server.api_addr 不能为空")
 	}

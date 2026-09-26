@@ -61,7 +61,7 @@ func (l *UserLogic) Create(c *gin.Context, req *param.UserSaveReq) (*resp.UserIt
 	if req.Username == "" || len(req.Password) < 6 {
 		return nil, errors.New("参数错误，密码至少6位")
 	}
-	avatar, err := normalizeFilePath(l.App, req.Avatar)
+	avatar, err := commonupload.NormalizeFilePath(l.App, req.Avatar)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func (l *UserLogic) Create(c *gin.Context, req *param.UserSaveReq) (*resp.UserIt
 
 // Update 修改用户基本信息与角色。
 func (l *UserLogic) Update(c *gin.Context, req *param.UserSaveReq) (*resp.UserItem, error) {
-	avatar, err := normalizeFilePath(l.App, req.Avatar)
+	avatar, err := commonupload.NormalizeFilePath(l.App, req.Avatar)
 	if err != nil {
 		return nil, err
 	}
@@ -200,21 +200,6 @@ func loadUserItem(application *app.App, userID uint) (*resp.UserItem, error) {
 		return nil, err
 	}
 	return &item, nil
-}
-
-func normalizeFilePath(application *app.App, value string) (string, error) {
-	if value == "" {
-		return "", nil
-	}
-	resolver, err := commonupload.NewURLResolver(application)
-	if err != nil {
-		return "", err
-	}
-	path, err := resolver.Relative(value)
-	if err != nil {
-		return "", errors.New("头像地址不合法")
-	}
-	return path, nil
 }
 
 func completeUserAvatar(application *app.App, item *resp.UserItem) error {

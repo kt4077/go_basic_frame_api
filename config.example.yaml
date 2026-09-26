@@ -1,3 +1,6 @@
+# 系统版本号（必填），启动、展示和 version 命令均读取该配置；发版时与 docs/update_doc/v{version}.md 同步更新
+version: v0.0.3
+
 server:
   # 管理端 API 监听地址
   admin_addr: ":8001"

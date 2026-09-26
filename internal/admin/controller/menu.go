@@ -6,6 +6,7 @@ import (
 	"server_api/internal/admin/logic"
 	"server_api/internal/admin/param"
 	"server_api/pkg/response"
+	requestvalidate "server_api/pkg/validate"
 )
 
 type MenuController struct{ Logic *logic.MenuLogic }
@@ -13,8 +14,8 @@ type MenuController struct{ Logic *logic.MenuLogic }
 // List 菜单列表。
 func (h *MenuController) List(c *gin.Context) {
 	var req param.MenuListReq
-	if err := c.ShouldBindQuery(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	res, err := h.Logic.List(c, &req)
@@ -38,8 +39,8 @@ func (h *MenuController) Tree(c *gin.Context) {
 // Create 新增菜单/按钮。
 func (h *MenuController) Create(c *gin.Context) {
 	var req param.MenuSaveReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	res, err := h.Logic.Create(c, &req)
@@ -53,8 +54,8 @@ func (h *MenuController) Create(c *gin.Context) {
 // Update 修改菜单/按钮。
 func (h *MenuController) Update(c *gin.Context) {
 	var req param.MenuSaveReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	res, err := h.Logic.Update(c, &req)
@@ -68,8 +69,8 @@ func (h *MenuController) Update(c *gin.Context) {
 // Delete 删除菜单/按钮。
 func (h *MenuController) Delete(c *gin.Context) {
 	var req param.IDReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误，缺少ID")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	if err := h.Logic.Delete(c, &req); err != nil {

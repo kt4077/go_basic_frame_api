@@ -26,7 +26,7 @@ description: This skill should be used when writing, modifying, or reviewing cod
 ### 2. 后端改动按分层落地（顺序）
 
 1. `internal/common/model/` 定义或复用 GORM 模型（表结构脚本放 `sql/`）。
-2. `internal/<端>/param/` 新增请求结构体（按功能分文件，字段带 `json`/`form`/`binding`/`comment`）。
+2. `internal/<端>/param/` 新增请求结构体（按功能分文件，字段带 `json`/`form`、`binding`、`validate`、`comment`）；Controller 通过 `pkg/validate` 统一绑定与返回语义化错误。
 3. `internal/<端>/resp/` 新增响应结构体（列表用 `list` + `total`；树用 `data` + `children`）。
 4. `internal/<端>/logic/` 写业务规则，方法统一接收 `*gin.Context`。
 5. `internal/<端>/controller/` 只做绑定与响应。
@@ -50,6 +50,7 @@ description: This skill should be used when writing, modifying, or reviewing cod
 - 接口变更同步 `docs/admin_openapi.yaml` 与 Apifox 文档。
 - 配置新增同步 `config/config.go`、`config.example.yaml` 与 README 配置表。
 - 未提交 `config.yaml`、`.env*`、证书、密钥、构建产物。
+- 发版同步更新 `config.example.yaml` 的 `version` 配置（唯一版本来源），并在 `docs/update_doc/` 新增 `v{version}.md` 版本说明。
 
 ## 速查规则
 

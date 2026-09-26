@@ -30,9 +30,12 @@ info:
 
     ## 通用枚举
     - 启用状态 status：1 启用、2 禁用
+    - 用户性别 gender：1 男、2 女、3 未知
+    - 用户注册来源 register_source：1 微信小程序、2 微信公众号、3 iOS、4 Android
     - 菜单类型 type：1 目录、2 菜单页面、3 按钮
     - 菜单显示状态 status：1 显示、2 隐藏
-    - 短信服务商 provider：1 阿里云、2 腾讯云
+    - 短信服务商 provider：1 阿里云、2 腾讯云、3 短信宝、4 SMS.cn、5 云片
+    - 短信默认渠道 is_default：0 否、1 是（布尔标志例外）
     - 短信模板类型 type：1 验证码、2 通知、3 营销
     - 短信发送状态 status：1 待发送、2 成功、3 失败
     - 微信应用类型 type：1 公众号、2 开放平台、3 小程序
@@ -65,12 +68,16 @@ tags:
     description: 角色增删改查、角色树、分配菜单、查看角色用户
   - name: 用户管理
     description: 管理员账号的增删改查、重置密码、踢下线
+  - name: 系统用户
+    description: C端会员用户的查询展示与账号启用/禁用
   - name: 部门管理
     description: 部门树与增删改
   - name: 文件上传
     description: 通用文件上传（multipart，字段名 file，单文件最大 50MB）
   - name: 操作日志
     description: 管理端操作日志分页查询
+  - name: 插件管理
+    description: 已安装插件、编译状态、迁移记录和启停状态管理
   - name: 存储渠道
     description: 对象存储渠道配置（本地/阿里云OSS/腾讯云COS/七牛云/MinIO）
   - name: 短信配置
@@ -845,6 +852,69 @@ paths:
               schema:
                 $ref: '#/components/schemas/Response'
 
+  ########################## 系统用户 ##########################
+  /admin/member/list:
+    get:
+      tags: [系统用户]
+      summary: 系统用户分页列表
+      description: C端会员用户信息展示，按注册时间倒序。
+      operationId: adminMemberList
+      parameters:
+        - name: keyword
+          in: query
+          description: 搜索关键字（昵称/姓名/账号/手机号）
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: 账号状态 1启用 2禁用
+          schema:
+            type: integer
+            enum: [1, 2]
+        - name: register_source
+          in: query
+          description: 注册来源 1微信小程序 2微信公众号 3iOS 4Android
+          schema:
+            type: integer
+            enum: [1, 2, 3, 4]
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/PageSizeQuery'
+      responses:
+        '200':
+          description: 系统用户列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MemberListRes'
+
+  /admin/member/set_status:
+    post:
+      tags: [系统用户]
+      summary: 启用/禁用系统用户账号
+      description: 目标状态与当前状态一致时幂等返回成功。
+      operationId: adminMemberSetStatus
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemberSetStatusReq'
+            example:
+              id: 1
+              status: 2
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
   ########################## 部门管理 ##########################
   /admin/dept/tree:
     get:
@@ -1018,6 +1088,145 @@ paths:
                       data:
                         $ref: '#/components/schemas/OperationLogListRes'
 
+  /admin/log/operation/delete:
+    post:
+      tags: [操作日志]
+      summary: 删除操作日志
+      description: 支持按 ID 列表删除。
+      operationId: adminOperationLogDelete
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  description: 日志ID列表
+                  items:
+                    type: integer
+              required: [ids]
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+  /admin/log/operation/clear:
+    post:
+      tags: [操作日志]
+      summary: 清空操作日志
+      description: 清空全部操作日志，不可恢复，执行前请确认。
+      operationId: adminOperationLogClear
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+  ########################## 插件管理 ##########################
+  /admin/plugin/list:
+    get:
+      tags: [插件管理]
+      summary: 插件分页列表
+      operationId: adminPluginList
+      parameters:
+        - name: keyword
+          in: query
+          description: 插件名称或标识关键字
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: 插件状态 1启用 2停用
+          schema:
+            type: integer
+            enum: [1, 2]
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/PageSizeQuery'
+      responses:
+        '200':
+          description: 插件列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PluginListRes'
+
+  /admin/plugin/detail:
+    get:
+      tags: [插件管理]
+      summary: 插件详情及迁移记录
+      operationId: adminPluginDetail
+      parameters:
+        - name: plugin_id
+          in: query
+          required: true
+          description: 插件唯一标识
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 插件详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PluginDetail'
+
+  /admin/plugin/status:
+    post:
+      tags: [插件管理]
+      summary: 修改插件启停状态
+      description: 修改数据库状态，管理端 API 和用户端 API 重启后生效。启用前校验编译版本、迁移及依赖，停用前校验反向依赖。
+      operationId: adminPluginUpdateStatus
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PluginStatusReq'
+      responses:
+        '200':
+          description: 修改成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+  /admin/plugin/info:
+    post:
+      tags: [插件管理]
+      summary: 修改插件展示信息
+      description: 只维护插件作者、插件主页和描述，不修改插件标识、版本及运行清单。
+      operationId: adminPluginUpdateInfo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PluginInfoUpdateReq'
+      responses:
+        '200':
+          description: 修改成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
   ########################## 存储渠道 ##########################
   /admin/storage/list:
     get:
@@ -1164,7 +1373,7 @@ paths:
     post:
       tags: [短信配置]
       summary: 新增/修改短信服务商配置
-      description: 传 id 为修改，不传为新增；access_key_secret 为空表示不修改原密钥。
+      description: 传 id 为修改，不传为新增；access_key_secret 为空表示不修改原密钥。允许多个渠道启用，但只能有一个默认渠道，默认渠道必须启用。各渠道字段映射见 docs/sms-providers.md。
       operationId: adminSMSSaveConfig
       requestBody:
         required: true
@@ -1178,6 +1387,7 @@ paths:
               access_key_id: LTAI5txxxxxxxxxx
               access_key_secret: xxxxxxxxxxxxxx
               endpoint: dysmsapi.aliyuncs.com
+              is_default: 1
               status: 1
       responses:
         '200':
@@ -1191,6 +1401,34 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/SMSConfigItem'
+
+  /admin/sms/config/test:
+    post:
+      tags: [短信配置]
+      summary: 发送短信渠道测试验证码
+      description: 使用指定配置及其第一条启用签名和验证码模板发送测试短信；管理端显式测试不要求该渠道为默认或启用。同一配置和手机号每分钟只能测试一次，发送结果写入短信发送记录。
+      operationId: adminSMSTestConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SMSConfigTestReq'
+            example:
+              config_id: 1
+              mobile: '13800000000'
+      responses:
+        '200':
+          description: 测试短信发送成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SMSConfigTestRes'
 
   /admin/sms/config/delete:
     post:
@@ -1939,6 +2177,74 @@ components:
               items:
                 $ref: '#/components/schemas/RoleItem'
 
+    MemberItem:
+      allOf:
+        - $ref: '#/components/schemas/BaseItem'
+        - type: object
+          properties:
+            sn:
+              type: string
+              description: 用户编号，全局唯一，cf 前缀 + 8 位小写字母和数字
+              example: cfk3m9x2a
+            nickname:
+              type: string
+              description: 昵称
+              example: 小小
+            real_name:
+              type: string
+              description: 姓名
+              example: 王小民
+            account:
+              type: string
+              description: 登录账号
+              example: xiaoxiaomin
+            mobile:
+              type: string
+              description: 手机号，脱敏展示（如 138****8001）
+              example: "138****8001"
+            avatar:
+              type: string
+              description: 头像访问地址（按当前默认存储动态生成）
+              example: /files/2026/09/25/8f14e45fceea167a5a36dedd4bea2543.png
+            gender:
+              type: integer
+              description: 性别 1男 2女 3未知
+              enum: [1, 2, 3]
+            age:
+              type: integer
+              description: 年龄
+              example: 26
+            birthday:
+              type: string
+              description: 出生日期，格式 YYYY-MM-DD，未设置为空串
+              example: "1999-01-01"
+            register_ip:
+              type: string
+              description: 注册IP
+            login_ip:
+              type: string
+              description: 最近登录IP
+            registered_at:
+              type: string
+              format: date-time
+              description: 注册时间，未设置为 null
+            logged_at:
+              type: string
+              format: date-time
+              description: 最近登录时间，未设置为 null
+            balance:
+              type: string
+              description: 账户余额，两位小数字符串，避免浮点精度问题
+              example: "128.50"
+            register_source:
+              type: integer
+              description: 注册来源 1微信小程序 2微信公众号 3iOS 4Android
+              enum: [1, 2, 3, 4]
+            status:
+              type: integer
+              description: 账号状态 1启用 2禁用
+              enum: [1, 2]
+
     DeptItem:
       allOf:
         - $ref: '#/components/schemas/BaseItem'
@@ -1971,6 +2277,101 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DeptTreeItem'
+
+    PluginItem:
+      allOf:
+        - $ref: '#/components/schemas/BaseItem'
+        - type: object
+          properties:
+            plugin_id:
+              type: string
+              description: 插件唯一标识
+            name:
+              type: string
+              description: 插件名称
+            version:
+              type: string
+              description: 数据库安装版本
+            code_version:
+              type: string
+              description: 当前程序编译版本，未编译时为空
+            logo:
+              type: string
+              description: 插件Logo相对路径
+            logo_url:
+              type: string
+              description: 根据当前存储配置补全的插件Logo访问地址
+            author:
+              type: string
+              description: 插件作者
+            homepage:
+              type: string
+              format: uri
+              description: 插件主页地址
+            description:
+              type: string
+              description: 插件描述
+            status:
+              type: integer
+              description: 插件状态 1启用 2停用
+              enum: [1, 2]
+            compiled:
+              type: boolean
+              description: 是否编译进当前程序
+
+    PluginMigrationItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: 主键ID
+        version:
+          type: string
+          description: 迁移版本
+        checksum:
+          type: string
+          description: 迁移内容SHA256摘要
+        status:
+          type: integer
+          description: 迁移状态 1成功 2失败
+          enum: [1, 2]
+        execution_ms:
+          type: integer
+          format: int64
+          description: 执行耗时毫秒
+        error_message:
+          type: string
+          description: 失败原因
+        executed_at:
+          type: string
+          format: date-time
+          description: 执行时间
+
+    PluginDetail:
+      allOf:
+        - $ref: '#/components/schemas/PluginItem'
+        - type: object
+          properties:
+            manifest:
+              type: string
+              description: 安装时插件清单JSON快照
+            migrations:
+              type: array
+              description: 数据库迁移记录
+              items:
+                $ref: '#/components/schemas/PluginMigrationItem'
+
+    PluginListRes:
+      type: object
+      properties:
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/PluginItem'
+        total:
+          type: integer
+          format: int64
+          description: 数据总数
 
     StorageItem:
       allOf:
@@ -2014,15 +2415,19 @@ components:
               description: 配置名称
             provider:
               type: integer
-              description: 服务商 1阿里云 2腾讯云
-              enum: [1, 2]
+              description: 服务商 1阿里云 2腾讯云 3短信宝 4 SMS.cn 5云片
+              enum: [1, 2, 3, 4, 5]
             access_key_id:
               type: string
-              description: 访问密钥ID（不返回密钥 Secret）
+              description: 渠道账号或访问密钥ID（不返回密钥 Secret）
             endpoint:
               type: string
               description: 服务地址
               example: dysmsapi.aliyuncs.com
+            is_default:
+              type: integer
+              description: 是否默认渠道 0否 1是；默认渠道必须启用且全局唯一
+              enum: [0, 1]
             status:
               type: integer
               description: 状态 1启用 2禁用
@@ -2105,7 +2510,7 @@ components:
           description: 模板ID
         mobile:
           type: string
-          description: 手机号
+          description: 手机号（脱敏展示，如 138****8001）
         content:
           type: string
           description: 发送内容
@@ -2309,6 +2714,19 @@ components:
           example: /files/2026/09/23/8f14e45fceea167a5a36dedd4bea2543.png
 
     # ---------------- 列表响应 ----------------
+    MemberListRes:
+      type: object
+      properties:
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemberItem'
+        total:
+          type: integer
+          format: int64
+          description: 数据总数
+          example: 36
+
     UserListRes:
       type: object
       properties:
@@ -2438,6 +2856,10 @@ components:
         system_name:
           type: string
           description: 系统名称
+        version:
+          type: string
+          description: 系统版本号，来自服务端 config.yaml，未配置时使用编译期内置版本
+          example: v0.0.3
 
     UserPlatformConfigRes:
       type: object
@@ -2618,6 +3040,19 @@ components:
           example: "654321"
       required: [id, password]
 
+    MemberSetStatusReq:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: 用户ID
+          example: 1
+        status:
+          type: integer
+          description: 目标状态 1启用 2禁用
+          enum: [1, 2]
+      required: [id, status]
+
     DeptSaveReq:
       type: object
       description: 部门保存参数（传 id 为修改，不传为新增）
@@ -2642,6 +3077,43 @@ components:
           description: 备注
       required: [name]
 
+    PluginStatusReq:
+      type: object
+      properties:
+        plugin_id:
+          type: string
+          description: 插件唯一标识
+        status:
+          type: integer
+          description: 插件状态 1启用 2停用
+          enum: [1, 2]
+      required: [plugin_id, status]
+
+    PluginInfoUpdateReq:
+      type: object
+      properties:
+        plugin_id:
+          type: string
+          description: 插件唯一标识
+        logo:
+          type: string
+          maxLength: 1000
+          description: 插件Logo相对路径，也兼容当前存储域名下的完整地址
+        author:
+          type: string
+          maxLength: 100
+          description: 插件作者
+        homepage:
+          type: string
+          format: uri
+          maxLength: 500
+          description: 插件主页地址
+        description:
+          type: string
+          maxLength: 2000
+          description: 插件描述
+      required: [plugin_id]
+
     StorageSaveReq:
       type: object
       description: 存储渠道保存参数（传 id 为修改，不传为新增）
@@ -2654,7 +3126,7 @@ components:
           description: 渠道名称
         channel:
           type: string
-          description: 渠道类型
+          description: 渠道类型，仅支持 local/alioss/cos/qiniu/minio，不在枚举内返回业务错误
           enum: [local, alioss, cos, qiniu, minio]
         params:
           type: string
@@ -2693,17 +3165,21 @@ components:
           description: 配置名称
         provider:
           type: integer
-          description: 服务商 1阿里云 2腾讯云
-          enum: [1, 2]
+          description: 服务商 1阿里云 2腾讯云 3短信宝 4 SMS.cn 5云片
+          enum: [1, 2, 3, 4, 5]
         access_key_id:
           type: string
-          description: 访问密钥ID
+          description: 阿里云AccessKey ID、腾讯云SDK AppID、短信宝用户名、SMS.cn uid 或云片API Key
         access_key_secret:
           type: string
-          description: 访问密钥Secret，留空表示不修改
+          description: 阿里云AccessKey Secret、腾讯云Secret Key、短信宝API Key/MD5密码或SMS.cn接口密码；云片无需填写；修改时留空表示不修改
         endpoint:
           type: string
           description: 服务地址
+        is_default:
+          type: integer
+          description: 是否默认渠道 0否 1是；允许多个渠道启用，但只能有一个启用的默认渠道
+          enum: [0, 1]
         status:
           type: integer
           description: 状态 1启用 2禁用
@@ -2712,6 +3188,27 @@ components:
           type: string
           description: 备注
       required: [name, provider, access_key_id, status]
+
+    SMSConfigTestReq:
+      type: object
+      description: 短信渠道测试参数
+      properties:
+        config_id:
+          type: integer
+          description: 短信配置ID
+        mobile:
+          type: string
+          description: 接收测试验证码的中国大陆手机号
+          example: '13800000000'
+      required: [config_id, mobile]
+
+    SMSConfigTestRes:
+      type: object
+      description: 短信渠道测试结果
+      properties:
+        provider_message_id:
+          type: string
+          description: 短信服务商消息ID
 
     SMSSignatureSaveReq:
       type: object
@@ -2751,7 +3248,7 @@ components:
           description: 模板名称
         template_code:
           type: string
-          description: 平台模板编码
+          description: 平台模板编码；短信宝可填写产品ID，云片可留空
         type:
           type: integer
           description: 模板类型 1验证码 2通知 3营销

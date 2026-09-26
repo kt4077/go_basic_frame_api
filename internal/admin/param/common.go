@@ -2,5 +2,5 @@
 package param
 
 type IDReq struct {
-	ID uint `json:"id" form:"id" binding:"required" comment:"主键ID"`
+	ID uint `json:"id" form:"id" binding:"required" validate:"主键ID" comment:"主键ID"`
 }

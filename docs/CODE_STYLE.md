@@ -18,7 +18,7 @@ go_backend_frame/
 │   │   ├── common/   # 两端共用：app / auth / enums / middleware / model / upload
 │   │   ├── admin/    # 管理端：controller / logic / param / resp / middleware / permission
 │   │   └── api/      # 用户端：controller / logic / param / resp
-│   ├── pkg/          # 无业务归属的工具：response / pagination / password / tree / dberror / oss
+│   ├── pkg/          # 无业务归属的工具：response / pagination / password / tree / dberror / oss / mask / sms / sn
 │   ├── sql/          # 数据库脚本（建表与升级）
 │   └── docs/         # 接口文档与本规范
 └── admin_client/     # 前端：Vue 3 + Vite + TS + Element Plus
@@ -54,7 +54,7 @@ go_backend_frame/
 
 核心约定：
 
-- controller 方法只做三件事：`ShouldBind` → 调 logic → `response.OK/Fail`。
+- controller 方法只做三件事：`requestvalidate.Bind` → 调 logic → `response.OK/Fail`，禁止直接调用 Gin `ShouldBind*`。
 - controller 调用 logic **必须传入 `*gin.Context`**；登录信息（claims）、IP、User-Agent 统一在 logic 层通过 `auth.CtxClaims(c)`、`c.ClientIP()`、`c.GetHeader("User-Agent")` 获取。
 - `param`、`resp` 必须按功能拆分为多个文件（如 `user.go`、`menu.go`），**禁止**合并成单个 `param.go` / `resp.go`。
 - 两端共用能力放 `internal/common/<功能>`；只属于一端的能力放回该端目录；无业务归属的工具放 `pkg/<功能>`。
@@ -73,23 +73,26 @@ go_backend_frame/
 
 - JSON 字段统一 `snake_case`：`json:"parent_id"`。
 - 查询参数接口（GET）字段同时声明 `form:"..."`；请求体接口（POST）只需 `json:"..."`。
-- 校验使用 `binding`：`required`、`min=6`、`oneof=1 2`、`omitempty,max=1024`、`url`、`email`。
+- 校验规则使用 `binding`：`required`、`min=6`、`oneof=1 2`、`omitempty,max=1024`、`url`、`email`。
+- 每个请求字段必须增加 `validate:"字段语义"`，用于生成面向用户的校验错误；语义从 `comment` 提取核心名称，不包含枚举或补充说明。
 - 每个字段写 `comment:"..."` 中文注释，作为接口文档与前端类型的事实来源。
 
 ```go
 type UserSaveReq struct {
-    ID       uint   `json:"id" comment:"主键ID"`
-    Username string `json:"username" comment:"登录账号"`
-    Password string `json:"password" comment:"登录密码"`
-    RoleIDs  []uint `json:"role_ids" comment:"角色ID列表"`
+    ID       uint   `json:"id" validate:"主键ID" comment:"主键ID"`
+    Username string `json:"username" binding:"required" validate:"登录账号" comment:"登录账号"`
+    Password string `json:"password" binding:"required,min=6" validate:"登录密码" comment:"登录密码"`
+    RoleIDs  []uint `json:"role_ids" validate:"角色ID列表" comment:"角色ID列表"`
 }
 ```
+
+统一验证器、错误文案和自定义规则注册方式见 [请求参数验证](request-validation.md)。
 
 ### 2.4 响应与错误
 
 - 统一使用 `pkg/response`：`response.OK(c, data)` 与 `response.Fail(c, code, msg)`，HTTP 状态码恒为 200。
 - 业务码：`0` 成功、`400` 参数错误、`401` 未登录/登录失效、`403` 无权限、`500` 业务失败、`503` 依赖不可用。
-- 参数绑定失败统一返回 `CodeErrParams`，不要透传 Gin 原始错误。
+- 参数绑定失败统一返回 `CodeErrParams` 和 `pkg/validate` 生成的错误，不要透传 Gin 或 validator 原始错误。
 - 数据库错误使用 `pkg/dberror` 识别（如 `IsDuplicateKey` → 重复提示），不要直接把驱动错误返回前端。
 - 无返回数据的操作接口（删除、设置默认、踢下线）使用 `response.OK(c, nil)`。
 
@@ -100,6 +103,7 @@ type UserSaveReq struct {
 - 批量写入、跨表一致性变更使用事务；保存类接口优先使用 `clause.OnConflict` 做 upsert，避免并发产生重复数据。
 - 并发一致性依赖数据库唯一约束（如角色编码唯一、唯一默认渠道），不能只靠应用层判断。
 - 软删除模型使用 `gorm.DeletedAt`，查询默认排除已删除记录。
+- 金额类字段数据库使用 `decimal`（如 `sys_member.balance` 为 `decimal(12,2)`），Go 模型与 Resp 用字符串承载，禁止 float/double，避免精度丢失。
 
 ### 2.6 鉴权与权限
 
@@ -203,6 +207,7 @@ export const getUserList = (params?: Partial<UserListReq>) => {
 
 - 按钮级权限使用指令：`v-perm="'POST:/admin/user/add'"`。
 - 上传使用通用上传组件；提交业务数据时传 `relative_path`，不要把访问域名写进业务字段。
+- 富文本编辑统一复用管理端 `src/components/RichTextEditor.vue`，不得在业务模块或插件中重复封装 WangEditor；上传、明暗主题和销毁生命周期由通用组件维护。
 
 ### 3.7 提交前检查
 
@@ -222,3 +227,4 @@ pnpm build
 3. **接口文档**：后端接口变更同步 `docs/admin_openapi.yaml`，并更新 Apifox 在线文档与 README 顶部文档地址。
 4. **双端一致**：字段命名、枚举取值、分页结构（`list` + `total`）、响应结构（`code`/`msg`/`data`）前后端必须一致。
 5. **不要过度设计**：新增能力优先复用现有 `pkg/` 与 `common/`；只有在确认无复用可能时才新增包。
+6. **发版说明**：每次发版必须更新 `config.example.yaml` 的 `version` 配置（版本号唯一来源是 `config.yaml`，服务启动时校验必填），并在 `docs/update_doc/` 新增 `v{version}.md` 版本功能说明，内容参照 `v0.0.1.md` / `v0.0.2.md` 的结构（版本目标、主要变更、数据库升级、部署顺序、验证命令）。
