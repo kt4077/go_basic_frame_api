@@ -4,16 +4,16 @@
 
 ```
 src/
-├── api/         按业务模块封装请求（auth / user / role / menu / dept / sms / wechat / payment / storage / platform / upload / operation_log / dashboard）
+├── api/         按业务模块封装请求（auth / user / member / role / menu / dept / sms / wechat / payment / storage / platform / upload / operation_log / dashboard）
 ├── types/       与 api 同名的请求与响应类型
-├── enums/       前端枚举（common / menu / channel / storage / platform）
+├── enums/       前端枚举（common / menu / member / channel / storage / platform）
 ├── utils/       auth（token）、datetime、echarts、views
 ├── store/       Pinia：app / user / platform / tags
 ├── router/      静态路由 + 后端菜单驱动的动态路由
 ├── directives/  v-perm 等
 ├── components/  通用组件（如 AvatarUpload）
 ├── styles/      主题变量与公共样式
-└── views/       config / dashboard / error / login / maintain / profile / redirect / system
+└── views/       config / dashboard / error / login / maintain / profile / redirect / system / user
 ```
 
 页面路径与后端菜单 `path` 对应：`/system/user` → `src/views/system/user/index.vue`。
@@ -54,6 +54,7 @@ BaseEntity       // { id, created_at, updated_at }
 - 禁止 `any`，不确定用 `unknown`。
 - 列表查询参数继承 `PageQuery`；列表响应用 `PageResult<T>`；实体继承 `BaseEntity`。
 - 后端树为 `{ data, children }`，组件需要平铺时写转换函数并注释原因。
+- 富文本编辑统一复用 `src/components/RichTextEditor.vue`，业务页面和插件只绑定内容与提示配置，不重复维护 WangEditor 上传、主题或销毁逻辑。
 
 ## 枚举
 

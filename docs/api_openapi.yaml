@@ -1,0 +1,515 @@
+openapi: 3.0.3
+
+info:
+  title: server_api 用户端 API
+  description: |
+    Go + Gin + GORM(MySQL) + Redis + JWT 用户端接口文档（会员账号体系，表 sys_member）。
+
+    ## 通用约定
+    - 用户端默认监听 `http://127.0.0.1:8002`，所有业务路径以 `/api` 开头。
+    - 除注册登录类接口外，其余接口需携带 `Authorization: Bearer <token>`。
+    - **所有接口必须携带平台来源与版本号请求头**：
+
+      | Header | 必填 | 说明 |
+      | --- | --- | --- |
+      | X-Platform-Source | 是 | 平台来源：1 微信小程序、2 微信公众号、3 iOS、4 Android；缺失或非法返回 400 |
+      | X-App-Version | 否 | 客户端版本号，服务端仅透传记录，不做一致性校验 |
+
+    - 注册来源 register_source 与 X-Platform-Source 取值一致。
+    - 登录令牌为单会话：同一账号重新登录后旧令牌立即失效；
+      管理端禁用账号后令牌同步失效。
+    - HTTP 状态码恒为 200，业务码 0 成功、400 参数错误、401 未登录、500 业务失败。
+
+    ## 统一响应结构
+    ```json
+    { "code": 0, "msg": "success", "data": {} }
+    ```
+
+servers:
+  - url: http://127.0.0.1:8002
+    description: 本地开发环境（用户端）
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: 短信验证码
+    description: 通用短信验证码发送，供登录、注册、换绑手机号等场景使用
+  - name: 认证
+    description: 注册、登录、退出
+  - name: 会员资料
+    description: 资料查询与昵称/姓名/头像/账号/密码/手机号维护
+
+paths:
+  /api/sms/code:
+    post:
+      tags: [短信验证码]
+      summary: 发送短信验证码
+      description: |
+        通用短信验证码接口，支持场景：1 登录、2 注册、3 换绑手机号。限流与安全策略：
+        - 同一手机号同一场景**每分钟最多 2 条**；
+        - 同一手机号同一场景 **5 分钟内累计超过 5 条**，禁止发送 **30 分钟**（提示用户稍后再试）；
+        - 验证码 5 分钟有效，校验错误超过 5 次立即作废，校验成功一次性消费。
+        短信通道只使用系统短信配置（sys_sms_config）中同时满足“启用且默认”的唯一渠道，支持阿里云、腾讯云、短信宝、SMS.cn 和云片；不存在可用默认渠道时返回“短信服务未开启，请联系管理员”。所有发送行为（成功、渠道失败、被限流拦截）均写入短信发送记录，拦截请求记录具体拦截原因。
+      operationId: apiSendSmsCode
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformSource'
+        - $ref: '#/components/parameters/AppVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SmsCodeReq'
+            example:
+              mobile: "13800138001"
+              scene: 2
+      responses:
+        '200':
+          description: 发送结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+  /api/auth/register:
+    post:
+      tags: [认证]
+      summary: 手机号验证码注册
+      description: |
+        仅支持手机号+验证码注册。默认昵称与头像取平台配置中的用户端配置，
+        注册来源记录 X-Platform-Source，注册成功后直接登录并返回令牌。
+        用户编号 sn 由服务端生成，全局唯一。
+      operationId: apiRegister
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformSource'
+        - $ref: '#/components/parameters/AppVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterReq'
+            example:
+              mobile: "13800138001"
+              code: "123456"
+      responses:
+        '200':
+          description: 注册成功并登录
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/LoginRes'
+
+  /api/auth/login_password:
+    post:
+      tags: [认证]
+      summary: 账号密码登录
+      description: 账号不存在时返回「账号不存在」；账号未设置密码时提示使用短信验证码登录。
+      operationId: apiLoginPassword
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformSource'
+        - $ref: '#/components/parameters/AppVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordLoginReq'
+            example:
+              account: xiaoer
+              password: ab123456
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/LoginRes'
+
+  /api/auth/login_sms:
+    post:
+      tags: [认证]
+      summary: 手机号验证码登录
+      description: 手机号未注册时返回「账号不存在，请先注册」。
+      operationId: apiLoginSms
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformSource'
+        - $ref: '#/components/parameters/AppVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SmsLoginReq'
+            example:
+              mobile: "13800138001"
+              code: "123456"
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/LoginRes'
+
+  /api/auth/logout:
+    post:
+      tags: [认证]
+      summary: 退出登录
+      description: 删除当前会话缓存，当前令牌立即失效。
+      operationId: apiLogout
+      parameters:
+        - $ref: '#/components/parameters/PlatformSource'
+        - $ref: '#/components/parameters/AppVersion'
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+  /api/auth/profile:
+    get:
+      tags: [会员资料]
+      summary: 当前会员资料
+      description: 手机号脱敏展示；头像为按当前存储配置补全后的访问地址。
+      operationId: apiProfile
+      parameters:
+        - $ref: '#/components/parameters/PlatformSource'
+        - $ref: '#/components/parameters/AppVersion'
+      responses:
+        '200':
+          description: 会员资料
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MemberProfile'
+
+  /api/auth/profile/update:
+    post:
+      tags: [会员资料]
+      summary: 修改资料
+      description: 支持昵称、姓名、头像、性别；头像传当前存储渠道返回的文件地址，服务端转为相对路径保存；字段不传表示不修改。
+      operationId: apiProfileUpdate
+      parameters:
+        - $ref: '#/components/parameters/PlatformSource'
+        - $ref: '#/components/parameters/AppVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdateReq'
+            example:
+              nickname: 小明
+              real_name: 王小明
+              avatar: uploads/2026/09/25/8f14e45fceea167a5a36dedd4bea2543.png
+              gender: 1
+      responses:
+        '200':
+          description: 修改后的资料
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Response'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MemberProfile'
+
+  /api/auth/account/update:
+    post:
+      tags: [会员资料]
+      summary: 修改登录账号
+      description: 账号全表唯一，4-32 位字母、数字或下划线；已被使用时返回业务错误。
+      operationId: apiAccountUpdate
+      parameters:
+        - $ref: '#/components/parameters/PlatformSource'
+        - $ref: '#/components/parameters/AppVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountUpdateReq'
+            example:
+              account: xiaoming2026
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+  /api/auth/password/update:
+    post:
+      tags: [会员资料]
+      summary: 修改登录密码
+      description: |
+        密码强度：至少 6 位且必须同时包含字母和数字。
+        已设置过密码时必须传原密码；修改成功后当前会话立即失效，需重新登录。
+        未设置过密码（短信验证码注册）可不传原密码直接设置。
+      operationId: apiPasswordUpdate
+      parameters:
+        - $ref: '#/components/parameters/PlatformSource'
+        - $ref: '#/components/parameters/AppVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordUpdateReq'
+            example:
+              old_password: ab123456
+              new_password: cd234567
+      responses:
+        '200':
+          description: 操作成功（会话已失效，需重新登录）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+  /api/auth/mobile/update:
+    post:
+      tags: [会员资料]
+      summary: 修改手机号
+      description: 需要先对新手机号发送场景 3（换绑手机号）验证码；新手机号不能已被其他账号绑定。
+      operationId: apiMobileUpdate
+      parameters:
+        - $ref: '#/components/parameters/PlatformSource'
+        - $ref: '#/components/parameters/AppVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MobileUpdateReq'
+            example:
+              mobile: "13800138002"
+              code: "123456"
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PlatformSource:
+      name: X-Platform-Source
+      in: header
+      required: true
+      description: 平台来源 1微信小程序 2微信公众号 3iOS 4Android
+      schema:
+        type: integer
+        enum: [1, 2, 3, 4]
+    AppVersion:
+      name: X-App-Version
+      in: header
+      required: false
+      description: 客户端版本号，服务端仅透传记录
+      schema:
+        type: string
+
+  schemas:
+    Response:
+      type: object
+      description: 统一响应结构（HTTP 状态码恒为 200，业务状态看 code）
+      properties:
+        code:
+          type: integer
+          description: 业务响应码 0成功 400参数错误 401未登录或登录失效 403无权限 500业务失败 503依赖服务不可用
+          enum: [0, 400, 401, 403, 500, 503]
+          example: 0
+        msg:
+          type: string
+          description: 提示信息，失败时为具体原因
+        data:
+          description: 业务数据
+
+    SmsCodeReq:
+      type: object
+      properties:
+        mobile:
+          type: string
+          description: 手机号
+          example: "13800138001"
+        scene:
+          type: integer
+          description: 验证码场景 1登录 2注册 3换绑手机号
+          enum: [1, 2, 3]
+      required: [mobile, scene]
+
+    RegisterReq:
+      type: object
+      properties:
+        mobile:
+          type: string
+          description: 手机号
+          example: "13800138001"
+        code:
+          type: string
+          description: 短信验证码（6位）
+          example: "123456"
+      required: [mobile, code]
+
+    PasswordLoginReq:
+      type: object
+      properties:
+        account:
+          type: string
+          description: 登录账号
+          example: xiaoer
+        password:
+          type: string
+          description: 登录密码
+          example: ab123456
+      required: [account, password]
+
+    SmsLoginReq:
+      type: object
+      properties:
+        mobile:
+          type: string
+          description: 手机号
+          example: "13800138001"
+        code:
+          type: string
+          description: 短信验证码（6位）
+          example: "123456"
+      required: [mobile, code]
+
+    ProfileUpdateReq:
+      type: object
+      properties:
+        nickname:
+          type: string
+          description: 昵称
+        real_name:
+          type: string
+          description: 姓名
+        avatar:
+          type: string
+          description: 头像文件地址（保存时转为相对路径）
+        gender:
+          type: integer
+          description: 性别：1男，2女，3未知；不传表示不修改
+          enum: [1, 2, 3]
+      required: []
+
+    AccountUpdateReq:
+      type: object
+      properties:
+        account:
+          type: string
+          description: 新登录账号，4-32位字母、数字或下划线，全表唯一
+          example: xiaoming2026
+      required: [account]
+
+    PasswordUpdateReq:
+      type: object
+      properties:
+        old_password:
+          type: string
+          description: 原密码，已设置过密码时必填
+        new_password:
+          type: string
+          description: 新密码，至少6位且同时包含字母和数字
+          example: cd234567
+      required: [new_password]
+
+    MobileUpdateReq:
+      type: object
+      properties:
+        mobile:
+          type: string
+          description: 新手机号
+          example: "13800138002"
+        code:
+          type: string
+          description: 发送到新手机号的短信验证码
+          example: "123456"
+      required: [mobile, code]
+
+    LoginRes:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT 访问令牌，携带会员ID、昵称、编号、头像与会话ID
+
+    MemberProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: 用户ID
+        sn:
+          type: string
+          description: 用户编号，全局唯一
+          example: M202609251754509918
+        account:
+          type: string
+          description: 登录账号，未设置为空串
+        nickname:
+          type: string
+          description: 昵称
+        real_name:
+          type: string
+          description: 姓名
+        avatar:
+          type: string
+          description: 头像访问地址（按当前默认存储动态生成）
+        mobile:
+          type: string
+          description: 手机号（脱敏展示，如 138****8001）
+          example: "138****8001"
+        gender:
+          type: integer
+          description: 性别 1男 2女 3未知
+          enum: [1, 2, 3]
+        register_source:
+          type: integer
+          description: 注册来源 1微信小程序 2微信公众号 3iOS 4Android
+          enum: [1, 2, 3, 4]
+        registered_at:
+          type: string
+          format: date-time
+          description: 注册时间

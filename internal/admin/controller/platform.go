@@ -6,6 +6,7 @@ import (
 	"server_api/internal/admin/logic"
 	"server_api/internal/admin/param"
 	"server_api/pkg/response"
+	requestvalidate "server_api/pkg/validate"
 )
 
 // PlatformController 平台配置控制器。
@@ -24,8 +25,8 @@ func (h *PlatformController) AdminDetail(c *gin.Context) {
 // SaveAdmin 保存管理端配置。
 func (h *PlatformController) SaveAdmin(c *gin.Context) {
 	var req param.AdminPlatformSaveReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	result, err := h.Logic.SaveAdmin(c, &req)
@@ -49,8 +50,8 @@ func (h *PlatformController) UserDetail(c *gin.Context) {
 // SaveUser 保存用户端配置。
 func (h *PlatformController) SaveUser(c *gin.Context) {
 	var req param.UserPlatformSaveReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, response.CodeErrParams, "参数错误")
+	if err := requestvalidate.Bind(c, &req); err != nil {
+		response.Fail(c, response.CodeErrParams, err.Error())
 		return
 	}
 	result, err := h.Logic.SaveUser(c, &req)

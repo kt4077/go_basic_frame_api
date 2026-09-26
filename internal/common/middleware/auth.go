@@ -10,7 +10,8 @@ import (
 )
 
 // Auth JWT 鉴权中间件：校验 token，并检查 Redis 中 login_id 是否有效（主动过期）。
-func Auth(application *app.App) gin.HandlerFunc {
+// allow 用于限定令牌的客户端类型（admin | api），防止管理端与用户端令牌互相调用。
+func Auth(application *app.App, allow ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenStr := auth.BearerToken(c)
 		if tokenStr == "" {
@@ -21,6 +22,11 @@ func Auth(application *app.App) gin.HandlerFunc {
 		claims, err := auth.ParseToken(application, tokenStr)
 		if err != nil {
 			response.FailWithStatus(c, 401, response.CodeErrAuth, err.Error())
+			c.Abort()
+			return
+		}
+		if !auth.ClientAllowed(claims, allow) {
+			response.FailWithStatus(c, 401, response.CodeErrAuth, "登录已失效，请重新登录")
 			c.Abort()
 			return
 		}

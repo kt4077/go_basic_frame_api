@@ -47,3 +47,26 @@ func (l *OperationLogLogic) List(c *gin.Context, req *param.OperationLogListReq)
 	}
 	return &resp.OperationLogListRes{List: resp.NewOperationLogItems(list), Total: total}, nil
 }
+
+// Delete 批量物理删除指定操作日志。
+func (l *OperationLogLogic) Delete(c *gin.Context, req *param.OperationLogDeleteReq) (*resp.OperationLogDeleteRes, error) {
+	result := l.App.DB.WithContext(c).Unscoped().
+		Where("id IN ?", req.IDs).
+		Delete(&model.SysOperationLog{})
+	if result.Error != nil {
+		return nil, errors.New("删除操作日志失败")
+	}
+	return &resp.OperationLogDeleteRes{Deleted: result.RowsAffected}, nil
+}
+
+// Clear 使用单条 DELETE 语句全量物理删除操作日志，保证该次清理的原子性。
+func (l *OperationLogLogic) Clear(c *gin.Context, req *param.OperationLogClearReq) (*resp.OperationLogDeleteRes, error) {
+	if req.Confirm != "CLEAR_ALL_OPERATION_LOGS" {
+		return nil, errors.New("清空确认信息错误")
+	}
+	result := l.App.DB.WithContext(c).Exec("DELETE FROM `sys_operation_log`")
+	if result.Error != nil {
+		return nil, errors.New("清空操作日志失败")
+	}
+	return &resp.OperationLogDeleteRes{Deleted: result.RowsAffected}, nil
+}

@@ -17,7 +17,11 @@ import (
 	"server_api/pkg/response"
 )
 
-const operationLogListPath = "/admin/log/operation/list"
+var operationLogMaintenancePaths = map[string]struct{}{
+	"GET:/admin/log/operation/list":    {},
+	"POST:/admin/log/operation/delete": {},
+	"POST:/admin/log/operation/clear":  {},
+}
 
 // logBodyWriter 包装响应写入器，捕获接口响应内容
 type logBodyWriter struct {
@@ -34,7 +38,7 @@ func (w *logBodyWriter) Write(b []byte) (int, error) {
 // 包含请求参数（敏感字段脱敏）与接口响应内容（超长截断）。
 func OperationLog(application *app.App) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 登录及操作日志查询接口不记录，避免查看日志时产生新的操作日志。
+		// 登录及操作日志维护接口不记录，避免查询产生噪声或清空后立即新增日志。
 		if shouldSkipOperationLog(c.Request.Method, c.FullPath()) {
 			c.Next()
 			return
@@ -89,7 +93,8 @@ func shouldSkipOperationLog(method, path string) bool {
 	if method == "POST" && path == "/admin/login" {
 		return true
 	}
-	return method == "GET" && path == operationLogListPath
+	_, ok := operationLogMaintenancePaths[method+":"+path]
+	return ok
 }
 
 func isJSONBody(c *gin.Context) bool {

@@ -3,6 +3,8 @@ package logic
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -28,6 +30,9 @@ func (l *StorageLogic) List(c *gin.Context) ([]resp.StorageItem, error) {
 
 // Create 新增存储渠道。第一个渠道自动设为默认。
 func (l *StorageLogic) Create(c *gin.Context, req *param.StorageSaveReq) (*resp.StorageItem, error) {
+	if !enums.IsValidStorageChannel(req.Channel) {
+		return nil, fmt.Errorf("存储渠道不合法，可选值：%s", strings.Join(enums.ValidStorageChannels, "、"))
+	}
 	if err := validateStorageParams(req.Params); err != nil {
 		return nil, err
 	}
@@ -72,6 +77,9 @@ func (l *StorageLogic) Update(c *gin.Context, req *param.StorageSaveReq) (*resp.
 	var cfg model.SysStorageConfig
 	if err := l.App.DB.First(&cfg, req.ID).Error; err != nil {
 		return nil, errors.New("存储渠道不存在")
+	}
+	if !enums.IsValidStorageChannel(req.Channel) {
+		return nil, fmt.Errorf("存储渠道不合法，可选值：%s", strings.Join(enums.ValidStorageChannels, "、"))
 	}
 	if err := validateStorageParams(req.Params); err != nil {
 		return nil, err

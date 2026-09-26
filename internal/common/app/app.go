@@ -87,16 +87,17 @@ func (a *App) Close() error {
 	return firstErr
 }
 
-// CheckTables 启动前检查必需的数据表是否存在，缺失时直接报错并提示初始化方式。
-// 本项目不使用自动迁移，建表与初始数据由 sql/schema.sql 手动执行。
+// CheckTables 启动前检查核心必需表是否存在。插件自己的业务表由插件迁移记录校验，
+// 不加入核心静态清单，避免停用的可选插件阻止核心服务启动。
 func (a *App) CheckTables() error {
 	required := []string{
-		"sys_dept", "sys_user", "sys_role", "sys_menu",
+		"sys_dept", "sys_user", "sys_member", "sys_role", "sys_menu",
 		"sys_user_login", "sys_user_role", "sys_role_menu",
 		"sys_operation_log", "sys_storage_config", "sys_upload_file",
 		"sys_sms_config", "sys_sms_signature", "sys_sms_template", "sys_sms_send_log",
 		"sys_wechat_config", "sys_payment_config",
 		"sys_platform_config",
+		"sys_plugin", "sys_plugin_migration", "sys_plugin_menu", "sys_plugin_install_log",
 	}
 	var missing []string
 	for _, table := range required {
@@ -105,12 +106,15 @@ func (a *App) CheckTables() error {
 		}
 	}
 	if len(missing) > 0 {
-		return fmt.Errorf("缺少数据表 %v，请先执行 sql/schema.sql 初始化数据库", missing)
+		return fmt.Errorf("缺少核心数据表 %v，请先执行 sql/v0.0.1 初始化脚本及后续版本升级脚本", missing)
+	}
+	if !a.DB.Migrator().HasColumn(&model.SysPluginMenu{}, "parent_source") {
+		return fmt.Errorf("sys_plugin_menu缺少parent_source字段，请执行sql/v0.0.2/plugin_menu_parent_custom.sql")
 	}
 	var userCount int64
 	a.DB.Model(&model.SysUser{}).Count(&userCount)
 	if userCount == 0 {
-		return fmt.Errorf("sys_user 表没有数据，请执行 sql/schema.sql 导入初始账号")
+		return fmt.Errorf("sys_user 表没有数据，请执行 sql/v0.0.1 初始化脚本导入初始账号")
 	}
 	return nil
 }

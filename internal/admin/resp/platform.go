@@ -5,6 +5,7 @@ type AdminPlatformConfigRes struct {
 	Logo       string `json:"logo" comment:"管理端Logo访问地址"`
 	LogoPath   string `json:"logo_path" comment:"管理端Logo相对路径"`
 	SystemName string `json:"system_name" comment:"系统名称"`
+	Version    string `json:"version" comment:"系统版本号（编译期常量）"`
 }
 
 // UserPlatformConfigRes 用户端平台配置响应。

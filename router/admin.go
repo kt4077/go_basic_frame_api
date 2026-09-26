@@ -10,12 +10,14 @@ import (
 	"server_api/internal/admin/logic"
 	adminmiddleware "server_api/internal/admin/middleware"
 	"server_api/internal/common/app"
+	"server_api/internal/common/enums"
 	commonmiddleware "server_api/internal/common/middleware"
+	commonplugin "server_api/internal/common/plugin"
 	commonupload "server_api/internal/common/upload"
 )
 
 // AdminRoutes 管理端路由。
-func AdminRoutes(application *app.App) *gin.Engine {
+func AdminRoutes(application *app.App, pluginRegistry *commonplugin.Registry) (*gin.Engine, error) {
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery(), commonmiddleware.CORS())
 	r.GET("/files/*filepath", func(c *gin.Context) { commonupload.ServeLocalFile(application, c) })
@@ -24,6 +26,7 @@ func AdminRoutes(application *app.App) *gin.Engine {
 	menuC := &controller.MenuController{Logic: &logic.MenuLogic{App: application}}
 	roleC := &controller.RoleController{Logic: &logic.RoleLogic{App: application}}
 	userC := &controller.UserController{Logic: &logic.UserLogic{App: application}}
+	memberC := &controller.MemberController{Logic: &logic.MemberLogic{App: application}}
 	deptC := &controller.DeptController{Logic: &logic.DeptLogic{App: application}}
 	storageC := &controller.StorageController{Logic: &logic.StorageLogic{App: application}}
 	uploadC := &controller.UploadController{App: application}
@@ -33,6 +36,7 @@ func AdminRoutes(application *app.App) *gin.Engine {
 	wechatC := &controller.WechatController{Logic: &logic.WechatLogic{App: application}}
 	paymentC := &controller.PaymentController{Logic: &logic.PaymentLogic{App: application}}
 	platformC := &controller.PlatformController{Logic: &logic.PlatformLogic{App: application}}
+	pluginC := &controller.PluginController{Logic: &logic.PluginLogic{App: application, Registry: pluginRegistry}}
 
 	// 无需登录
 	pub := r.Group("/admin")
@@ -42,7 +46,7 @@ func AdminRoutes(application *app.App) *gin.Engine {
 	}
 
 	// 需登录
-	auth := r.Group("/admin", commonmiddleware.Auth(application), adminmiddleware.OperationLog(application))
+	auth := r.Group("/admin", commonmiddleware.Auth(application, enums.ClientAdmin), adminmiddleware.OperationLog(application))
 	{
 		auth.POST("/logout", authC.Logout)
 		auth.GET("/me", authC.Me)
@@ -54,7 +58,7 @@ func AdminRoutes(application *app.App) *gin.Engine {
 	}
 
 	// 需登录 + 接口级权限（api_path 与菜单/按钮绑定）
-	perm := r.Group("/admin", commonmiddleware.Auth(application), adminmiddleware.Permission(application), adminmiddleware.OperationLog(application))
+	perm := r.Group("/admin", commonmiddleware.Auth(application, enums.ClientAdmin), adminmiddleware.Permission(application), adminmiddleware.OperationLog(application))
 	{
 		// 系统总览
 		perm.GET("/dashboard/overview", dashC.Overview)
@@ -84,11 +88,17 @@ func AdminRoutes(application *app.App) *gin.Engine {
 		perm.POST("/user/reset_password", userC.ResetPassword)
 		perm.POST("/user/kick", userC.Kick)
 
+		// 用户管理：系统用户
+		perm.GET("/member/list", memberC.List)
+		perm.POST("/member/set_status", memberC.SetStatus)
+
 		// 文件上传（通用接口，免接口鉴权：见 enums.SkipPermissionApis）
 		perm.POST("/upload/file", uploadC.Upload)
 
 		// 日志维护
 		perm.GET("/log/operation/list", logC.List)
+		perm.POST("/log/operation/delete", logC.Delete)
+		perm.POST("/log/operation/clear", logC.Clear)
 
 		// 存储渠道配置
 		perm.GET("/storage/list", storageC.List)
@@ -100,6 +110,7 @@ func AdminRoutes(application *app.App) *gin.Engine {
 		// 短信配置：开发信息、签名、模板、发送记录
 		perm.GET("/sms/config/list", smsC.ConfigList)
 		perm.POST("/sms/config/save", smsC.SaveConfig)
+		perm.POST("/sms/config/test", smsC.TestConfig)
 		perm.POST("/sms/config/delete", smsC.DeleteConfig)
 		perm.GET("/sms/signature/list", smsC.SignatureList)
 		perm.POST("/sms/signature/save", smsC.SaveSignature)
@@ -128,6 +139,18 @@ func AdminRoutes(application *app.App) *gin.Engine {
 		perm.POST("/dept/add", deptC.Create)
 		perm.POST("/dept/update", deptC.Update)
 		perm.POST("/dept/delete", deptC.Delete)
+
+		// 插件管理：状态修改后在服务重启时生效
+		perm.GET("/plugin/list", pluginC.List)
+		perm.GET("/plugin/detail", pluginC.Detail)
+		perm.POST("/plugin/info", pluginC.UpdateInfo)
+		perm.POST("/plugin/status", pluginC.UpdateStatus)
 	}
-	return r
+
+	if err := pluginRegistry.RegisterAdminRoutes(commonplugin.AdminRouteGroups{
+		Public: pub, Auth: auth, Permission: perm,
+	}); err != nil {
+		return nil, err
+	}
+	return r, nil
 }

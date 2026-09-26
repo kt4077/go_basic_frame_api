@@ -8,6 +8,7 @@ type SysSMSConfig struct {
 	AccessKeyID     string `gorm:"size:128;not null;comment:访问密钥ID" json:"access_key_id"`
 	AccessKeySecret string `gorm:"size:255;not null;comment:访问密钥Secret" json:"-"`
 	Endpoint        string `gorm:"size:255;default:'';comment:服务地址" json:"endpoint"`
+	IsDefault       int    `gorm:"default:0;comment:是否默认渠道，0否1是" json:"is_default"`
 	Status          int    `gorm:"default:1;index;comment:状态" json:"status"`
 	Remark          string `gorm:"size:255;default:'';comment:备注" json:"remark"`
 }

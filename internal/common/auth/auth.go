@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,10 +18,14 @@ import (
 )
 
 // JWT Claims：除常规字段外携带 login_id，用于 Redis 主动过期。
+// 会员令牌额外携带昵称、用户编号与头像相对路径，鉴权通过后写入上下文。
 type Claims struct {
 	UserID   uint   `json:"user_id"`
 	Username string `json:"username"`
 	LoginID  string `json:"login_id"`
+	Nickname string `json:"nickname"`
+	SN       string `json:"sn"`
+	Avatar   string `json:"avatar"`
 	IsSuper  int    `json:"is_super"`
 	Client   string `json:"client"` // admin | api
 	jwt.RegisteredClaims
@@ -28,6 +33,11 @@ type Claims struct {
 
 // loginCacheKey Redis 中 login_id 的缓存键。
 func loginCacheKey(loginID string) string { return "login:" + loginID }
+
+// memberLoginCacheKey Redis 中会员当前会话的缓存键，按会员ID存放 login_id。
+func memberLoginCacheKey(memberID uint) string {
+	return "member_login:" + strconv.FormatUint(uint64(memberID), 10)
+}
 
 // CreateLogin 登录成功后调用：写入登录流水、生成 JWT、写入 Redis 缓存。
 func CreateLogin(application *app.App, user *model.SysUser, client, ip, userAgent string) (token string, err error) {
@@ -126,6 +136,16 @@ func ParseToken(application *app.App, tokenStr string) (*Claims, error) {
 	if exists == 0 {
 		return nil, errors.New("登录已失效，请重新登录")
 	}
+	// 会员令牌仅允许当前会话：重新登录后 member_login 缓存被覆盖，旧令牌失效
+	if claims.Client == enums.ClientApi {
+		current, err := application.Redis.Get(context.Background(), memberLoginCacheKey(claims.UserID)).Result()
+		if err != nil {
+			return nil, errors.New("登录已失效，请重新登录")
+		}
+		if current != claims.LoginID {
+			return nil, errors.New("登录已失效，请重新登录")
+		}
+	}
 	return claims, nil
 }
 
@@ -161,4 +181,81 @@ func GetUserByID(db *gorm.DB, id uint) (*model.SysUser, error) {
 		return nil, err
 	}
 	return &user, nil
+}
+
+// CreateMemberLogin 会员登录成功后调用：更新会员会话与最近登录信息，
+// 生成携带昵称/编号/头像的 JWT，并写入 Redis 会话缓存。
+// 会员单端登录：member_login 缓存按会员ID覆盖，旧令牌随之失效。
+func CreateMemberLogin(application *app.App, member *model.SysMember, ip, userAgent string) (string, error) {
+	loginID := uuid.NewString()
+	expire := time.Duration(application.Cfg.Jwt.ExpireHours) * time.Hour
+	claims := &Claims{
+		UserID:   member.ID,
+		Username: memberUsername(member),
+		LoginID:  loginID,
+		Nickname: member.Nickname,
+		SN:       member.SN,
+		Avatar:   member.Avatar,
+		Client:   enums.ClientApi,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    application.Cfg.Jwt.Issuer,
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(expire)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(application.Cfg.Jwt.Secret))
+	if err != nil {
+		return "", err
+	}
+
+	now := time.Now()
+	if err := application.DB.Model(&model.SysMember{}).Where("id = ?", member.ID).
+		Updates(map[string]interface{}{"login_id": loginID, "login_ip": ip, "logged_at": now}).Error; err != nil {
+		return "", err
+	}
+
+	ctx := context.Background()
+	pipe := application.Redis.TxPipeline()
+	pipe.Set(ctx, loginCacheKey(loginID), member.ID, expire)
+	pipe.Set(ctx, memberLoginCacheKey(member.ID), loginID, expire)
+	if _, err := pipe.Exec(ctx); err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
+// LogoutMember 会员退出登录：删除会话缓存。
+func LogoutMember(application *app.App, memberID uint, loginID string) error {
+	ctx := context.Background()
+	return application.Redis.Del(ctx, loginCacheKey(loginID), memberLoginCacheKey(memberID)).Err()
+}
+
+// KickMember 禁用会员时调用：删除其当前会话缓存，令牌立即失效。
+func KickMember(application *app.App, member *model.SysMember) error {
+	if member.LoginID == "" {
+		return nil
+	}
+	ctx := context.Background()
+	return application.Redis.Del(ctx, loginCacheKey(member.LoginID), memberLoginCacheKey(member.ID)).Err()
+}
+
+// memberUsername 会员令牌展示名：优先登录账号，未设置时使用手机号。
+func memberUsername(member *model.SysMember) string {
+	if member.Account != nil && *member.Account != "" {
+		return *member.Account
+	}
+	return member.Mobile
+}
+
+// ClientAllowed 判断令牌客户端类型是否在允许列表内；未指定时放行全部类型。
+func ClientAllowed(claims *Claims, allow []string) bool {
+	if len(allow) == 0 {
+		return true
+	}
+	for _, client := range allow {
+		if claims.Client == client {
+			return true
+		}
+	}
+	return false
 }

@@ -65,6 +65,23 @@ func (r *URLResolver) Relative(value string) (string, error) {
 	return cleaned, nil
 }
 
+// NormalizeFilePath 将上传返回的文件地址规整为可保存的相对路径，
+// 供管理端与用户端的业务字段写入前统一调用。
+func NormalizeFilePath(application *app.App, value string) (string, error) {
+	if strings.TrimSpace(value) == "" {
+		return "", nil
+	}
+	resolver, err := NewURLResolver(application)
+	if err != nil {
+		return "", err
+	}
+	path, err := resolver.Relative(value)
+	if err != nil {
+		return "", errors.New("文件地址不合法")
+	}
+	return path, nil
+}
+
 // FileURL 使用当前默认存储配置补全单个文件地址。
 func FileURL(application *app.App, relativePath string) (string, error) {
 	if relativePath == "" {
